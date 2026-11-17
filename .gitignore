@@ -1,0 +1,10 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+App/Shelfbound.xcodeproj/
+App/Shelfbound/Resources/Info.plist
+node_modules/
+signing.key
+dist/
