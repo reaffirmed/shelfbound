@@ -304,8 +304,10 @@ final class AppModel {
     /// Chapter links are handed to whichever installed source reads that site.
     func content(for ref: ChapterRef, chapter: Chapter?) async throws -> ChapterContent {
         if let local = await downloadManager.localContent(for: ref) { return local }
-        let manifest = manifest(for: ref.work.sourceID)
-        if let link = chapter?.link, manifest?.has(.discovery) == true {
+        // A chapter that already points at a site some source reads goes straight there.
+        // Otherwise the work's own source answers, and may hand back a link (a discovery
+        // source turns its redirect into the translator's chapter URL).
+        if let link = chapter?.link, linkHandler(for: link) != nil {
             return try await resolve(link: link)
         }
         let content = try await runtime(for: ref.work.sourceID).getChapterContent(workID: ref.work.workID, chapterID: ref.chapterID)
@@ -314,7 +316,7 @@ final class AppModel {
     }
 
     func linkHandler(for url: URL) -> InstalledSource? {
-        installed.first { $0.manifest.has(.links) && DomainPolicy(patterns: $0.manifest.domains).allows(url) }
+        visibleSources.first { $0.manifest.has(.links) && DomainPolicy(patterns: $0.manifest.domains).allows(url) }
     }
 
     func resolve(link url: URL) async throws -> ChapterContent {

@@ -11,7 +11,9 @@ const usage = `shelf-repo <command>
   build [repoDir]                  Validate sources and write dist/ with a signed index.json
                                    Key from $SHELF_SIGNING_KEY or <repoDir>/signing.key
   run <sourceDir> <fn> [args...]   Call a source function and print the JSON result
-                                   e.g. run sources/gutenberg search "pride" 1`;
+                                   e.g. run sources/gutenberg search "pride" 1
+                                   Arguments that look like JSON are parsed, so filters work:
+                                   run sources/ao3 search "tea" 1 '{"sort":["kudos"]}'`;
 
 const [cmd, ...args] = process.argv.slice(2);
 
@@ -32,7 +34,11 @@ try {
     const [sourceDir, fn, ...fnArgs] = args;
     if (!sourceDir || !fn) throw new Error(usage);
     const { call } = await loadSource(sourceDir);
-    const parsed = fnArgs.map((a) => (/^-?\d+$/.test(a) ? Number(a) : a));
+    const parsed = fnArgs.map((a) => {
+      if (/^-?\d+$/.test(a)) return Number(a);
+      if (/^[[{]/.test(a)) { try { return JSON.parse(a); } catch { /* plain text */ } }
+      return a;
+    });
     console.log(JSON.stringify(await call(fn, ...parsed), null, 2));
   } else {
     console.log(usage);

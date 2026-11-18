@@ -7,7 +7,7 @@ import path from "node:path";
  * so authors can test without a phone. This is a development tool, not a security
  * boundary; the app's sandbox is JavaScriptCore.
  */
-export async function loadSource(sourceDir, { settings = {}, fetchImpl = globalThis.fetch, log = console.error } = {}) {
+export async function loadSource(sourceDir, { settings = {}, fetchImpl = globalThis.fetch, log = console.error, throttle } = {}) {
   const manifest = JSON.parse(await readFile(path.join(sourceDir, "manifest.json"), "utf8"));
   const script = await readFile(path.join(sourceDir, "main.js"), "utf8");
   const allowed = (url) => {
@@ -17,13 +17,39 @@ export async function loadSource(sourceDir, { settings = {}, fetchImpl = globalT
     return manifest.domains.some((d) => (d.startsWith("*.") ? host === d.slice(2) || host.endsWith("." + d.slice(2)) : host === d));
   };
 
+  // Like the app: one request a second per source unless the manifest asks for more.
+  const gap = (throttle ?? fetchImpl === globalThis.fetch) ? (manifest.rateLimit?.minIntervalMs ?? 1000) : 0;
+  let nextAt = 0;
+  const wait = async () => {
+    const now = Date.now();
+    const at = Math.max(now, nextAt);
+    nextAt = at + gap;
+    if (at > now) await new Promise((r) => setTimeout(r, at - now));
+  };
+
   let cheerio = null;
   const host = Object.freeze({
     async fetch(req) {
       if (typeof req === "string") req = { url: req };
-      if (!allowed(req.url)) throw new Error(`The source tried to reach ${new URL(req.url).hostname}, which it didn't declare.`);
-      const res = await fetchImpl(req.url, { method: req.method ?? "GET", headers: { "User-Agent": "Shelfbound/0.1 (shelf-repo)", ...(req.headers ?? {}) }, body: req.body });
-      return { status: res.status, url: res.url || req.url, headers: Object.fromEntries(res.headers ?? []), body: await res.text() };
+      let url = req.url;
+      let method = req.method ?? "GET";
+      let body = req.body;
+      // Redirects are followed by hand so each target is checked against manifest.domains,
+      // and `redirect: "manual"` returns the 3xx response itself (read headers.location).
+      for (let hop = 0; ; hop++) {
+        if (!allowed(url)) throw new Error(`The source tried to reach ${new URL(url).hostname}, which it didn't declare.`);
+        await wait();
+        const res = await fetchImpl(url, { method, headers: { "User-Agent": "Shelfbound/0.2 (shelf-repo)", ...(req.headers ?? {}) }, body, redirect: "manual" });
+        const headers = Object.fromEntries([...(res.headers ?? [])].map(([k, v]) => [k.toLowerCase(), v]));
+        const location = headers.location;
+        if (res.status >= 300 && res.status < 400 && location && req.redirect !== "manual") {
+          if (hop >= 5) throw new Error("Too many redirects from " + req.url);
+          url = new URL(location, url).href;
+          if (res.status === 303 || ((res.status === 301 || res.status === 302) && method === "POST")) { method = "GET"; body = undefined; }
+          continue;
+        }
+        return { status: res.status, url: res.url || url, headers, body: await res.text() };
+      }
     },
     async fetchJSON(req) {
       const res = await host.fetch(req);
@@ -46,7 +72,13 @@ export async function loadSource(sourceDir, { settings = {}, fetchImpl = globalT
   for (const fn of ["search", "getWork", "getChapters", "getChapterContent"]) {
     if (typeof source?.[fn] !== "function") throw new Error(`Source must define source.${fn}`);
   }
+  const caps = manifest.capabilities ?? [];
+  if (caps.includes("filters") && typeof source.getFilters !== "function") throw new Error("The filters capability needs source.getFilters");
+  if (caps.includes("links") && typeof source.resolveLink !== "function") throw new Error("The links capability needs source.resolveLink");
   // Round-trip through JSON so results look exactly like what the app receives.
-  const call = async (fn, ...args) => JSON.parse(JSON.stringify(await source[fn](...args)));
-  return { manifest, call };
+  const call = async (fn, ...args) => {
+    if (typeof source[fn] !== "function") throw new Error(`The source has no ${fn} function`);
+    return JSON.parse(JSON.stringify(await source[fn](...args)));
+  };
+  return { manifest, call, implements: (fn) => typeof source[fn] === "function" };
 }

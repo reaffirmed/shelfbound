@@ -28,3 +28,15 @@ final class ReaderModeTests: XCTestCase {
         XCTAssertFalse(article.html.contains("alert"))
     }
 }
+
+final class SourceDatesTests: XCTestCase {
+    func testAcceptsJavaScriptAndPlainDates() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom(SourceDates.decode)
+        let dates = try decoder.decode([Date].self, from: Data(#"["2024-05-01T10:00:00Z","2024-05-01T10:00:00.250Z","2024-05-01",1714557600000]"#.utf8))
+        XCTAssertEqual(dates[0].timeIntervalSince1970, 1_714_557_600)
+        XCTAssertEqual(dates[1].timeIntervalSince1970, 1_714_557_600.25, accuracy: 0.001)
+        XCTAssertEqual(dates[2].timeIntervalSince1970, 1_714_521_600)
+        XCTAssertEqual(dates[3], dates[0])
+    }
+}
