@@ -1,4 +1,8 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+import ShelfCore
 
 /// A request a source makes through `host.fetch`.
 public struct HostRequest: Codable, Sendable, Hashable {
@@ -66,3 +70,4 @@ public actor URLSessionNetwork: HostNetwork {
         )
     }
 }
+
