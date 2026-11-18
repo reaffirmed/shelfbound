@@ -122,3 +122,9 @@ test("the manifest keeps AO3 explicit, slow, and filterable", async () => {
   assert.ok(manifest.rateLimit.minIntervalMs >= 3000);
   assert.deepEqual(manifest.capabilities, ["filters"]);
 });
+
+test("links to works and chapters give the work id", async () => {
+  const { call } = await loadSource(dir, { fetchImpl: fakeFetch([]) });
+  assert.equal(await call("idFromURL", "https://archiveofourown.org/works/1001/chapters/5003"), "1001");
+  assert.equal(await call("idFromURL", "https://archiveofourown.org/users/fern"), null);
+});

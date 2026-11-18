@@ -156,6 +156,12 @@ function seriesParts(html) {
 }
 
 globalThis.source = {
+  // For importing links: https://archiveofourown.org/works/123/chapters/456 → "123".
+  async idFromURL(url) {
+    const m = /archiveofourown\.org\/works\/(\d+)/.exec(url);
+    return m ? m[1] : null;
+  },
+
   async getFilters() {
     return FILTERS;
   },

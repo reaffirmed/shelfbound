@@ -53,6 +53,16 @@ struct SettingsView: View {
                     Text(lastCheckFooter)
                 }
 
+                Section {
+                    NavigationLink {
+                        ImportView()
+                    } label: {
+                        Label { Text("Import library") } icon: { RowIcon(systemImage: "square.and.arrow.down", color: Color(hex: "#3A7BD5")) }
+                    }
+                } footer: {
+                    Text("From Paperback, Aidoku, or a list of links such as AO3 bookmarks.")
+                }
+
                 Section("Storage") {
                     NavigationLink {
                         DownloadsView()
