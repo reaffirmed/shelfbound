@@ -104,6 +104,36 @@ final class PagedImageReaderController: UIViewController, UIPageViewControllerDa
         }
     }
 
+    // MARK: Keyboard (iPad keyboards and the Mac)
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        becomeFirstResponder()
+    }
+
+    override var keyCommands: [UIKeyCommand]? {
+        let next = UIKeyCommand(title: "Next Page", action: #selector(keyNext), input: " ")
+        let left = UIKeyCommand(input: UIKeyCommand.inputLeftArrow, modifierFlags: [], action: #selector(keyLeft))
+        let right = UIKeyCommand(input: UIKeyCommand.inputRightArrow, modifierFlags: [], action: #selector(keyRight))
+        let down = UIKeyCommand(input: UIKeyCommand.inputDownArrow, modifierFlags: [], action: #selector(keyNext))
+        let up = UIKeyCommand(input: UIKeyCommand.inputUpArrow, modifierFlags: [], action: #selector(keyPrevious))
+        for command in [left, right, down, up] { command.wantsPriorityOverSystemBehavior = true }
+        return [next, left, right, down, up]
+    }
+
+    /// The arrow that points the way the pages go moves forward.
+    @objc private func keyLeft() { keyStep(rightToLeft ? 1 : -1) }
+    @objc private func keyRight() { keyStep(rightToLeft ? -1 : 1) }
+    @objc private func keyNext() { keyStep(1) }
+    @objc private func keyPrevious() { keyStep(-1) }
+
+    private func keyStep(_ delta: Int) {
+        if panelByPanel, let page = pageController.viewControllers?.first as? ZoomingPageController, page.stepPanel(delta) { return }
+        step(delta)
+    }
+
     func setPanelByPanel(_ value: Bool) {
         guard value != panelByPanel else { return }
         panelByPanel = value

@@ -41,6 +41,10 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_CFBundleDisplayName: Shelfbound
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        # All four on iPad, which Split View and Slide Over require.
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        # Runs on Apple silicon Macs as "Designed for iPad".
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
     entitlements:
       path: Shelfbound/Resources/Shelfbound.entitlements
       properties:

@@ -55,6 +55,10 @@ final class AppModel {
     var pendingRepoLink: RepoLink?
     /// Set by a notification tap; the library opens this work.
     var pendingOpen: WorkKey?
+    /// The tab or sidebar item showing, so menu commands and Siri can switch it.
+    var selectedTab: AppTab = .library
+    /// A work to open straight into the reader at its place, from Siri or Shortcuts.
+    var pendingContinue: WorkKey?
     /// A tapped "downloads paused" notification: show the Downloads screen.
     var pendingShowDownloads = false
 
