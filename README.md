@@ -66,6 +66,10 @@ The app only accepts `https` repos, so for the simulator push `dist/` to GitHub 
 
 See `examples/repo-template/README.md` for the source API.
 
+## Widgets and Live Activities
+
+The `ShelfboundWidgets` extension has Continue reading and New chapters widgets for the Home Screen and Lock Screen, plus a Live Activity while chapters download. The app writes a small snapshot into the App Group `group.app.shelfbound`; the widgets only read it. To build it, pick your team under Signing & Capabilities for both targets and let Xcode register the App Group. Without the group the app still runs and the widgets stay empty.
+
 ## Importing from other apps
 
 Settings › Import library reads a Paperback backup (`.pas4`, a zip), an Aidoku backup (`.aib`), or a list of links such as AO3 bookmarks. Each work is found on an installed source, by its link when a source has `idFromURL`, otherwise by searching its title, and read chapters carry over by chapter number. The backup readers were written from the apps' formats without a real backup to test against, so try one and report what doesn't come through.

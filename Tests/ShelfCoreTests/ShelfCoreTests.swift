@@ -56,3 +56,11 @@ final class BrowserVerificationTests: XCTestCase {
         XCTAssertNil(store.userAgent(for: URL(string: "https://example.org/a")!))
     }
 }
+
+final class WidgetSnapshotTests: XCTestCase {
+    func testLinksRoundTripOddIDs() {
+        let key = WorkKey(sourceID: "org.example.ao3", workID: "series/42?x=1&y=2")
+        XCTAssertEqual(WidgetSnapshot.workKey(from: WidgetSnapshot.link(to: key)), key)
+        XCTAssertNil(WidgetSnapshot.workKey(from: URL(string: "shelfbound://add-repo?url=x")!))
+    }
+}

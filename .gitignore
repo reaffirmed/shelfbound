@@ -8,3 +8,6 @@ App/Shelfbound/Resources/Info.plist
 node_modules/
 signing.key
 dist/
+App/ShelfboundWidgets/Info.plist
+App/Shelfbound/Resources/*.entitlements
+App/ShelfboundWidgets/*.entitlements
