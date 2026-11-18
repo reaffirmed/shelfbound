@@ -1,0 +1,12 @@
+{
+  "id": "org.shelfbound.example.novelupdates",
+  "name": "Novel Updates",
+  "version": "1.0.0",
+  "kind": "text",
+  "format": "novel",
+  "languages": ["en"],
+  "contentRating": "mature",
+  "domains": ["www.novelupdates.com", "novelupdates.com"],
+  "rateLimit": { "minIntervalMs": 2000 },
+  "capabilities": ["discovery"]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "shelfbound-ao3-repo",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": { "test": "node --test test/*.test.mjs" }
+}
