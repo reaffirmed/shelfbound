@@ -453,6 +453,7 @@ struct PagedReaderScreen: View {
 
     private var context: ReaderContext { ReaderContext(model: model, key: key) }
     private var rightToLeft: Bool { context.record.map { model.readingMode($0) } != .pagedLeftToRight }
+    private var panelByPanel: Bool { context.record?.settings.panelByPanel ?? false }
 
     var body: some View {
         ZStack {
@@ -460,6 +461,7 @@ struct PagedReaderScreen: View {
             if case let .loaded(.images(pages)) = phase {
                 PagedImageReader(
                     chapterID: chapterID, pages: pages, startPage: startPage, rightToLeft: rightToLeft,
+                    panelByPanel: panelByPanel,
                     endTitle: "End of \(context.chapter(chapterID)?.title ?? "chapter")",
                     nextTitle: context.neighbour(of: chapterID, 1)?.title,
                     page: $page,
@@ -545,6 +547,13 @@ struct PagedReaderScreen: View {
             subtitle: "Chapter \(context.index(of: chapterID) + 1) · \(context.chapter(chapterID)?.title ?? "")",
             close: { dismiss() }
         ) {
+            Button {
+                let on = !panelByPanel
+                model.updateRecord(key) { $0.settings.panelByPanel = on }
+            } label: {
+                Image(systemName: panelByPanel ? "rectangle.split.2x2.fill" : "rectangle.split.2x2").frame(width: 40, height: 40)
+            }
+            .accessibilityLabel(panelByPanel ? "Show whole pages" : "Read panel by panel")
             Button { showingChapters = true } label: { Image(systemName: "list.bullet").frame(width: 40, height: 40) }
                 .accessibilityLabel("Chapters")
         }

@@ -84,6 +84,10 @@ In a fic or novel chapter, select text and choose **Highlight** or **Add Note**.
 
 On iOS 18 and later, the translate button in the text reader (or **Translate chapters** on a work's page) translates each chapter with Apple's Translation framework. It runs on the device, and iOS asks to download a language the first time. **Show original** switches back. Translations are cached, so reopening a chapter is instant. Paragraphs lose inline formatting such as italics while translated. On iOS 17.4 and later, **Translate** next to a work's summary opens the system translation sheet.
 
+## Panel by panel
+
+In the paged manga reader, the panels button in the top bar zooms to one panel at a time. Tapping the next-page side moves to the next panel, and past the last panel it turns the page. Panels are found on the device by cutting the page along its gutters, in manga order (right to left) or comic order as the work is set. Splash pages and borderless art show whole. The choice is saved per work.
+
 ## Content policy
 
 Shelfbound doesn't host content or list repos. Only add sources for sites whose terms allow it, and respect their rate limits and access rules.
