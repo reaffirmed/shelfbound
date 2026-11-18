@@ -162,6 +162,7 @@ public enum ReaderDocument {
         .notes { color: \(c.muted); border-left: 3px solid \(c.muted); padding-left: 12px; margin: 1em 0 1.5em; font-size: .92em; }
         .notes summary { cursor: pointer; font-weight: 600; }
         .gl { border-bottom: 1px dotted \(c.accent); }
+        mark.hl { background: rgba(255, 204, 0, \(style.theme.isDark ? "0.32" : "0.38")); color: inherit; border-radius: 2px; }
         .r-end { margin-top: 3em; padding-top: 1.5em; border-top: 1px solid \(c.muted)55; text-align: center;
                  color: \(c.muted); font: 15px/1.5 -apple-system, system-ui, sans-serif; }
         .r-end a.next { display: inline-block; margin-top: .6em; padding: .7em 1.2em; border-radius: 12px;
@@ -186,7 +187,8 @@ public enum ReaderDocument {
     }
 
     /// Script the text reader injects (page scripts stay off). It reports scroll
-    /// progress and underlines glossary terms; tapping one posts its index.
+    /// progress, underlines glossary terms (tapping one posts its index), and reads and
+    /// marks highlights (tapping one posts its id).
     public static let readerScript = #"""
     (function () {
       let last = -1;
@@ -232,8 +234,90 @@ public enum ReaderDocument {
       };
       document.addEventListener("click", function (e) {
         const el = e.target.closest && e.target.closest(".gl");
-        if (el) { window.webkit.messageHandlers.glossary.postMessage(Number(el.dataset.i)); }
+        if (el) { window.webkit.messageHandlers.glossary.postMessage(Number(el.dataset.i)); return; }
+        const mark = e.target.closest && e.target.closest("mark.hl");
+        if (mark && window.getSelection().isCollapsed) { window.webkit.messageHandlers.highlight.postMessage(mark.dataset.h); }
       });
+
+      // Highlights are stored as the quote plus a little text either side, measured in
+      // the article's text, so they survive changes to the chapter's markup.
+      const CONTEXT = 32;
+      window.__shelfSelection = function () {
+        const root = document.querySelector("article");
+        const sel = window.getSelection();
+        if (!root || !sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+        const range = sel.getRangeAt(0);
+        if (!root.contains(range.commonAncestorContainer)) return null;
+        const before = document.createRange();
+        before.setStart(root, 0);
+        before.setEnd(range.startContainer, range.startOffset);
+        const text = root.textContent;
+        const start = before.toString().length;
+        const exact = range.toString();
+        if (!exact.trim()) return null;
+        const end = start + exact.length;
+        return JSON.stringify({
+          exact: exact,
+          prefix: text.slice(Math.max(0, start - CONTEXT), start),
+          suffix: text.slice(end, end + CONTEXT),
+        });
+      };
+
+      function locate(text, h) {
+        const tries = [[h.prefix + h.exact + h.suffix, h.prefix.length], [h.prefix + h.exact, h.prefix.length],
+                       [h.exact + h.suffix, 0], [h.exact, 0]];
+        for (const [needle, shift] of tries) {
+          const at = text.indexOf(needle);
+          if (at >= 0) return at + shift;
+        }
+        return -1;
+      }
+
+      const applied = {};
+      window.__shelfHighlights = function (list) {
+        const root = document.querySelector("article");
+        if (!root) return;
+        list.forEach((h) => {
+          if (applied[h.id] || !h.exact) return;
+          const start = locate(root.textContent, h);
+          if (start < 0) return;
+          const end = start + h.exact.length;
+          const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+          const parts = [];
+          let pos = 0;
+          while (walker.nextNode()) {
+            const node = walker.currentNode, len = node.nodeValue.length;
+            const from = Math.max(start, pos), to = Math.min(end, pos + len);
+            if (from < to) parts.push([node, from - pos, to - pos]);
+            pos += len;
+            if (pos >= end) break;
+          }
+          parts.forEach(([node, a, b]) => {
+            if (!node.nodeValue.slice(a, b).trim()) return;
+            let target = node;
+            if (a > 0) target = target.splitText(a);
+            if (b - a < target.nodeValue.length) target.splitText(b - a);
+            const mark = document.createElement("mark");
+            mark.className = "hl";
+            mark.dataset.h = h.id;
+            target.parentNode.replaceChild(mark, target);
+            mark.appendChild(target);
+          });
+          applied[h.id] = true;
+        });
+        const sel = window.getSelection();
+        if (sel) sel.removeAllRanges();
+      };
+
+      window.__shelfUnhighlight = function (id) {
+        document.querySelectorAll('mark.hl[data-h="' + id + '"]').forEach((mark) => {
+          const parent = mark.parentNode;
+          while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+          parent.removeChild(mark);
+          parent.normalize();
+        });
+        delete applied[id];
+      };
     })();
     """#
 }

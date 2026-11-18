@@ -219,6 +219,7 @@ struct TextReaderScreen: View {
     @State private var showingStyle = false
     @State private var showingChapters = false
     @State private var glossaryEntry: GlossaryEntry?
+    @State private var editingHighlight: Highlight?
 
     private var context: ReaderContext { ReaderContext(model: model, key: key) }
 
@@ -229,7 +230,8 @@ struct TextReaderScreen: View {
             Color(hex: colors.background).ignoresSafeArea()
             if case let .loaded(content) = phase {
                 TextWebView(
-                    html: html(for: content), restoreProgress: restore, glossary: glossaryTerms, seek: $seek,
+                    html: html(for: content), restoreProgress: restore, glossary: glossaryTerms,
+                    highlights: context.record?.highlights(in: chapterID) ?? [], seek: $seek,
                     pullToAdvance: model.settings.autoAdvance && context.neighbour(of: chapterID, 1) != nil,
                     onProgress: { value in
                         progress = value
@@ -238,6 +240,16 @@ struct TextReaderScreen: View {
                     onTap: { withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() } },
                     onGlossaryTerm: { index in
                         if let entries = context.record?.glossary, entries.indices.contains(index) { glossaryEntry = entries[index] }
+                    },
+                    onHighlight: { selection, withNote in
+                        let highlight = Highlight(
+                            chapterID: chapterID, chapterTitle: context.chapter(chapterID)?.title ?? "",
+                            exact: selection.exact, prefix: selection.prefix, suffix: selection.suffix)
+                        model.addHighlight(highlight, to: key)
+                        if withNote { editingHighlight = highlight }
+                    },
+                    onHighlightTap: { id in
+                        editingHighlight = context.record?.highlights?.first { $0.id == id }
                     },
                     onNext: { go(1) })
                 .ignoresSafeArea(edges: .bottom)
@@ -261,6 +273,9 @@ struct TextReaderScreen: View {
         }
         .sheet(item: $glossaryEntry) { entry in
             NavigationStack { GlossaryEditor(key: key, entry: entry) }.presentationDetents([.medium])
+        }
+        .sheet(item: $editingHighlight) { highlight in
+            NavigationStack { HighlightEditor(key: key, highlight: highlight) }.presentationDetents([.medium, .large])
         }
     }
 

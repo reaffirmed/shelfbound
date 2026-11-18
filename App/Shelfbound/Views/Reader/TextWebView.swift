@@ -1,21 +1,27 @@
+import LibraryKit
 import ShelfCore
 import SwiftUI
 import WebKit
 
 /// WKWebView with page JavaScript off, a CSP from `ReaderDocument`, and links opened in
-/// Safari. Only our own injected script runs: it reports scroll progress and taps, and
-/// underlines glossary terms.
+/// Safari. Only our own injected script runs: it reports scroll progress and taps,
+/// underlines glossary terms and marks highlights. Selecting text adds "Highlight" and
+/// "Add Note" to the edit menu.
 @MainActor
 struct TextWebView: UIViewRepresentable {
     let html: String
     let restoreProgress: Double
     let glossary: [String]
+    var highlights: [Highlight] = []
     /// Set to jump to a position (0...1); cleared after use.
     @Binding var seek: Double?
     var pullToAdvance: Bool
     var onProgress: (Double) -> Void
     var onTap: () -> Void
     var onGlossaryTerm: (Int) -> Void
+    /// A passage was selected and highlighted; the flag is true when the reader asked to add a note.
+    var onHighlight: (TextSelection, Bool) -> Void = { _, _ in }
+    var onHighlightTap: (UUID) -> Void = { _ in }
     var onNext: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -27,11 +33,15 @@ struct TextWebView: UIViewRepresentable {
         config.dataDetectorTypes = []
         let controller = config.userContentController
         controller.addUserScript(WKUserScript(source: ReaderDocument.readerScript + Self.tapScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
-        for name in ["progress", "glossary", "tap"] {
+        for name in Self.handlers {
             controller.add(context.coordinator, name: name)
         }
 
-        let view = WKWebView(frame: .zero, configuration: config)
+        let view = ReaderWebView(frame: .zero, configuration: config)
+        view.onMenuAction = { [weak coordinator = context.coordinator, weak view] withNote in
+            guard let coordinator, let view else { return }
+            coordinator.highlightSelection(in: view, withNote: withNote)
+        }
         view.isOpaque = false
         view.backgroundColor = .clear
         view.scrollView.backgroundColor = .clear
@@ -49,7 +59,11 @@ struct TextWebView: UIViewRepresentable {
             coordinator.loadedHTML = html
             coordinator.loadedChapterHTML = chapterKey
             coordinator.pendingRestore = keep
+            coordinator.appliedHighlights = []
+            coordinator.loaded = false
             view.loadHTMLString(html, baseURL: nil)
+        } else if coordinator.loaded {
+            coordinator.syncHighlights(view)
         }
         if let seek {
             coordinator.scroll(view, to: seek)
@@ -65,16 +79,19 @@ struct TextWebView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {
-        for name in ["progress", "glossary", "tap"] {
+        for name in handlers {
             view.configuration.userContentController.removeScriptMessageHandler(forName: name)
         }
         coordinator.stopObserving()
     }
 
-    /// A tap anywhere that isn't a link or glossary term toggles the reader's bars.
+    private static let handlers = ["progress", "glossary", "tap", "highlight"]
+
+    /// A tap anywhere that isn't a link, glossary term or highlight toggles the reader's bars.
     private static let tapScript = """
     document.addEventListener("click", function (e) {
-      if (e.target.closest && (e.target.closest("a") || e.target.closest(".gl") || e.target.closest("summary"))) return;
+      if (!window.getSelection().isCollapsed) return;
+      if (e.target.closest && (e.target.closest("a") || e.target.closest(".gl") || e.target.closest("mark.hl") || e.target.closest("summary"))) return;
       window.webkit.messageHandlers.tap.postMessage(1);
     });
     """
@@ -86,6 +103,9 @@ struct TextWebView: UIViewRepresentable {
         var loadedChapterHTML: String?
         var pendingRestore: Double = 0
         var lastProgress: Double = 0
+        var loaded = false
+        /// Highlight IDs currently marked in the page.
+        var appliedHighlights: Set<UUID> = []
         private var offsetObservation: NSKeyValueObservation?
         private var advanceArmed = true
 
@@ -129,8 +149,34 @@ struct TextWebView: UIViewRepresentable {
                 else if let index = message.body as? Double { parent?.onGlossaryTerm(Int(index)) }
             case "tap":
                 parent?.onTap()
+            case "highlight":
+                if let id = (message.body as? String).flatMap(UUID.init(uuidString:)) { parent?.onHighlightTap(id) }
             default:
                 break
+            }
+        }
+
+        /// Marks new highlights and unmarks deleted ones, without reloading the page.
+        func syncHighlights(_ view: WKWebView) {
+            let current = parent?.highlights ?? []
+            let ids = Set(current.map(\.id))
+            for id in appliedHighlights.subtracting(ids) {
+                view.evaluateJavaScript("window.__shelfUnhighlight(\"\(id.uuidString)\");")
+            }
+            let added = current.filter { !appliedHighlights.contains($0.id) }
+            appliedHighlights = ids
+            guard !added.isEmpty else { return }
+            let marks = added.map { ["id": $0.id.uuidString, "exact": $0.exact, "prefix": $0.prefix, "suffix": $0.suffix] }
+            if let data = try? JSONSerialization.data(withJSONObject: marks), let json = String(data: data, encoding: .utf8) {
+                view.evaluateJavaScript("window.__shelfHighlights(\(json));")
+            }
+        }
+
+        func highlightSelection(in view: WKWebView, withNote: Bool) {
+            view.evaluateJavaScript("window.__shelfSelection();") { [weak self] result, _ in
+                guard let json = result as? String, let data = json.data(using: .utf8),
+                      let selection = try? JSONDecoder().decode(TextSelection.self, from: data) else { return }
+                Task { @MainActor in self?.parent?.onHighlight(selection, withNote) }
             }
         }
 
@@ -139,6 +185,8 @@ struct TextWebView: UIViewRepresentable {
                let data = try? JSONSerialization.data(withJSONObject: terms), let json = String(data: data, encoding: .utf8) {
                 webView.evaluateJavaScript("window.__shelfGlossary(\(json));")
             }
+            loaded = true
+            syncHighlights(webView)
             let p = pendingRestore
             pendingRestore = 0
             if p > 0 { scroll(webView, to: p) }
@@ -156,5 +204,28 @@ struct TextWebView: UIViewRepresentable {
             }
             return action.navigationType == .other ? .allow : .cancel
         }
+    }
+}
+
+/// The passage selected in the text reader, with the text either side of it.
+struct TextSelection: Decodable, Sendable {
+    var exact: String
+    var prefix: String
+    var suffix: String
+}
+
+/// Adds the highlight actions to the menu shown over selected text.
+final class ReaderWebView: WKWebView {
+    var onMenuAction: ((Bool) -> Void)?
+
+    override func buildMenu(with builder: UIMenuBuilder) {
+        super.buildMenu(with: builder)
+        let highlight = UIAction(title: "Highlight", image: UIImage(systemName: "highlighter")) { [weak self] _ in
+            self?.onMenuAction?(false)
+        }
+        let note = UIAction(title: "Add Note", image: UIImage(systemName: "note.text.badge.plus")) { [weak self] _ in
+            self?.onMenuAction?(true)
+        }
+        builder.insertChild(UIMenu(title: "", options: .displayInline, children: [highlight, note]), atStartOfMenu: .standardEdit)
     }
 }

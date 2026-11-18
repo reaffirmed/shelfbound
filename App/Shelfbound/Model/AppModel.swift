@@ -317,7 +317,24 @@ final class AppModel {
         library[key]?.settings.autoScrollSpeed ?? settings.autoScrollSpeed
     }
 
-    /// Moves a work to another source, keeping read chapters, place, settings and glossary.
+    // MARK: - Highlights
+
+    func addHighlight(_ highlight: Highlight, to key: WorkKey) {
+        library.addHighlight(highlight, to: key)
+        scheduleSave()
+    }
+
+    func removeHighlight(_ id: UUID, from key: WorkKey) {
+        library.removeHighlight(id, from: key)
+        scheduleSave()
+    }
+
+    func setHighlightNote(_ id: UUID, note: String, in key: WorkKey) {
+        library.setHighlightNote(id, note: note, in: key)
+        scheduleSave()
+    }
+
+    /// Moves a work to another source, keeping read chapters, place, settings, glossary and highlights.
     /// Downloads from the old source are deleted, since nothing can open them any more.
     func migrate(_ old: WorkKey, to key: WorkKey, summary: WorkSummary, work: Work?, chapters: [Chapter]) {
         guard let record = library[old], old != key else { return }
@@ -518,8 +535,10 @@ final class AppModel {
 
     func saveNow() {
         var state = library
-        // Works only browsed (not saved, never read, no glossary) aren't worth keeping.
-        state.records = state.records.filter { $0.value.inLibrary || $0.value.lastReadAt != nil || !$0.value.glossary.isEmpty }
+        // Works only browsed (not saved, never read, no glossary or highlights) aren't worth keeping.
+        state.records = state.records.filter {
+            $0.value.inLibrary || $0.value.lastReadAt != nil || !$0.value.glossary.isEmpty || !($0.value.highlights ?? []).isEmpty
+        }
         try? libraryFile?.save(state)
         widgets.update(library: library, badge: settings.badgeNewChapters)
     }
