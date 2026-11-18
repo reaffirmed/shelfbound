@@ -20,6 +20,8 @@ struct WorkDetailView: View {
     @State private var newestFirst = false
     @State private var showingGlossary = false
     @State private var showingHighlights = false
+    @State private var showingTranslation = false
+    @State private var translatingSummary = false
 
     private var key: WorkKey { route.key }
     private var record: WorkRecord? { model.record(key) }
@@ -60,6 +62,9 @@ struct WorkDetailView: View {
         .browserVerification($verifying)
         .sheet(isPresented: $showingStyle) {
             ReaderStyleSheet(key: key).presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showingTranslation) {
+            NavigationStack { TranslationSettingsSheet(key: key) }.presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $migrating) {
             if let record {
@@ -287,6 +292,18 @@ struct WorkDetailView: View {
                     if let translators = record.work?.translators, !translators.isEmpty {
                         LabeledContent("Translated by", value: translators.joined(separator: ", ")).font(.subheadline)
                     }
+                    if ChapterTranslation.isAvailable {
+                        Button {
+                            showingTranslation = true
+                        } label: {
+                            HStack {
+                                Label("Translate chapters", systemImage: "translate")
+                                Spacer()
+                                Text(record.settings.translateTo.map(TranslationSettingsSheet.name) ?? "Off")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                     Toggle("Skip translator notes", isOn: Binding(
                         get: { record.settings.skipNotes },
                         set: { value in model.updateRecord(key) { $0.settings.skipNotes = value } }
@@ -350,11 +367,18 @@ struct WorkDetailView: View {
     private var summary: some View {
         let text = (record?.work?.summaryHTML ?? route.summary.blurb)?.strippingHTML
         if let text, !text.isEmpty {
-            SectionHeader(title: "Summary")
+            if SystemTranslation.isAvailable {
+                SectionHeader(title: "Summary") {
+                    Button("Translate") { translatingSummary = true }.font(.subheadline)
+                }
+            } else {
+                SectionHeader(title: "Summary")
+            }
             Text(text)
                 .font(.system(.body, design: .serif))
                 .padding(.horizontal, 20)
                 .textSelection(.enabled)
+                .modifier(SystemTranslation(isPresented: $translatingSummary, text: text))
         }
     }
 

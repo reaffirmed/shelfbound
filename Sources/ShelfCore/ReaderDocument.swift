@@ -318,6 +318,44 @@ public enum ReaderDocument {
         });
         delete applied[id];
       };
+
+      // Translation swaps the text of each block for its translation and keeps the
+      // original markup to put back. Marks and glossary spans go with it, so the app
+      // re-applies them afterwards.
+      let blocks = [];
+      const BLOCKS = "p, li, h1, h2, h3, h4, h5, h6, blockquote, dt, dd, td, th, figcaption";
+      window.__shelfParagraphs = function () {
+        const root = document.querySelector("article");
+        if (!root) return "[]";
+        if (!blocks.length) {
+          blocks = Array.from(root.querySelectorAll(BLOCKS))
+            .filter((el) => !el.querySelector(BLOCKS) && el.textContent.trim());
+        }
+        return JSON.stringify(blocks.map((el) => (el.__shelfOriginal !== undefined ? el.__shelfText : el.textContent).trim()));
+      };
+      function resetMarks() { Object.keys(applied).forEach((k) => delete applied[k]); }
+      window.__shelfTranslate = function (list) {
+        blocks.forEach((el, i) => {
+          if (typeof list[i] !== "string") return;
+          if (el.__shelfOriginal === undefined) { el.__shelfOriginal = el.innerHTML; el.__shelfText = el.textContent; }
+          el.textContent = list[i];
+        });
+        document.body.classList.add("translated");
+        resetMarks();
+      };
+      window.__shelfOriginal = function () {
+        blocks.forEach((el) => {
+          if (el.__shelfOriginal === undefined) return;
+          el.innerHTML = el.__shelfOriginal;
+          // The saved markup may hold marks from before; the app applies them again.
+          el.querySelectorAll("mark.hl, span.gl").forEach((m) => m.replaceWith(document.createTextNode(m.textContent)));
+          el.normalize();
+          delete el.__shelfOriginal;
+          delete el.__shelfText;
+        });
+        document.body.classList.remove("translated");
+        resetMarks();
+      };
     })();
     """#
 }
