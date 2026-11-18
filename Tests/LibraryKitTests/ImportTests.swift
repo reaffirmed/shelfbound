@@ -118,3 +118,40 @@ final class SearchMergeTests: XCTestCase {
         XCTAssertEqual(merged.count, 2)
     }
 }
+
+final class MigrationTests: XCTestCase {
+    func testKeepsReadChaptersPositionSettingsAndGlossary() {
+        let oldKey = WorkKey(sourceID: "old", workID: "w")
+        var record = WorkRecord(key: oldKey, summary: WorkSummary(id: "w", title: "Hollow Tide", authors: []), format: .manhwa)
+        record.chapters = (1...5).map { Chapter(id: "o\($0)", title: "Chapter \($0)") }
+        record.inLibrary = true
+        record.readChapterIDs = ["o1", "o2", "o3"]
+        record.position = ReadingPosition(chapterID: "o4", chapterTitle: "Chapter 4", progress: 0.4)
+        record.settings.readingMode = .pagedLeftToRight
+        record.settings.preferredGroup = "Old Scans"
+        record.glossary = [GlossaryEntry(term: "Lin", note: "the hero")]
+
+        let newChapters = [Chapter(id: "n1", title: "Ep. 1"), Chapter(id: "n2", title: "Ep. 2"), Chapter(id: "n4", title: "Ep. 4"), Chapter(id: "n6", title: "Ep. 6")]
+        let preview = Migration.preview(record, onto: newChapters)
+        XCTAssertEqual(preview.matchedRead, 2)
+        XCTAssertEqual(preview.totalRead, 3)
+        XCTAssertEqual(preview.position?.id, "n4")
+
+        let newKey = WorkKey(sourceID: "new", workID: "x")
+        let next = Migration.migrate(record, to: newKey, summary: WorkSummary(id: "x", title: "Hollow Tide", authors: []), work: nil, chapters: newChapters, format: .manhwa)
+        XCTAssertEqual(next.key, newKey)
+        XCTAssertTrue(next.inLibrary)
+        XCTAssertEqual(next.readChapterIDs, ["n1", "n2"])
+        XCTAssertEqual(next.position?.chapterID, "n4")
+        XCTAssertEqual(next.position?.progress, 0.4)
+        XCTAssertEqual(next.settings.readingMode, .pagedLeftToRight)
+        XCTAssertNil(next.settings.preferredGroup)
+        XCTAssertEqual(next.glossary.map(\.term), ["Lin"])
+
+        var state = LibraryState()
+        state[oldKey] = record
+        state.replace(oldKey, with: next)
+        XCTAssertNil(state[oldKey])
+        XCTAssertEqual(state[newKey]?.readChapterIDs.count, 2)
+    }
+}
