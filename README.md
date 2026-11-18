@@ -52,3 +52,7 @@ See `examples/repo-template/README.md` for the source API.
 ## Content policy
 
 Shelfbound doesn't host content or list repos. Only add sources for sites whose terms allow it, and respect their rate limits and access rules.
+
+## License
+
+Proprietary. All rights reserved. See `LICENSE`.
