@@ -92,3 +92,29 @@ final class ImportTests: XCTestCase {
         XCTAssertThrowsError(try LibraryImporter.parse(files: ["x.json": Data(#"{"hello":1}"#.utf8)]))
     }
 }
+
+final class SearchMergeTests: XCTestCase {
+    private func w(_ id: String, _ title: String, _ authors: [String] = []) -> WorkSummary { WorkSummary(id: id, title: title, authors: authors) }
+
+    func testSameWorkOnSeveralSourcesShowsOnce() {
+        let merged = SearchMerger.merge([
+            ("a", [w("a1", "Solo Leveling", ["Chugong"]), w("a2", "Solo Leveling: Ragnarok")]),
+            ("b", [w("b1", "SOLO LEVELING"), w("b2", "Hollow Tide")]),
+            ("c", [w("c1", "Solo Leveling", ["Someone Else"])]),
+        ])
+        XCTAssertEqual(merged.map(\.primary.work.id), ["a1", "c1", "a2", "b2"])
+        XCTAssertEqual(merged[0].others.map(\.work.id), ["b1"], "different author stays separate")
+    }
+
+    func testPreferredSourceOpensFirst() {
+        let merged = SearchMerger.merge([("a", [w("a1", "Hollow Tide")]), ("b", [w("b1", "Hollow Tide")])], preferred: ["b"])
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged[0].primary.sourceID, "b")
+        XCTAssertEqual(merged[0].others.map(\.sourceID), ["a"])
+    }
+
+    func testTwoResultsFromOneSourceNeverMerge() {
+        let merged = SearchMerger.merge([("a", [w("a1", "Tea"), w("a2", "Tea")])])
+        XCTAssertEqual(merged.count, 2)
+    }
+}
