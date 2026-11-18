@@ -423,6 +423,21 @@ final class AppModel {
         Task { await downloadManager.enqueue(requests) }
     }
 
+    /// "Mark as Read" on a new-chapter alert.
+    func markNewChaptersRead(_ chapterIDs: [String], in key: WorkKey) {
+        for id in chapterIDs { library.markRead(id, in: key) }
+        saveNow()
+        refreshBadge()
+    }
+
+    /// "Download" on a new-chapter alert.
+    func downloadChapters(_ chapterIDs: [String], in key: WorkKey) {
+        guard let record = library[key] else { return }
+        let wanted = Set(chapterIDs)
+        let chapters = record.chapters.filter { wanted.contains($0.id) }
+        if !chapters.isEmpty { download(chapters, of: record) }
+    }
+
     /// Keeps the next few unread chapters downloaded, for works in the library.
     func downloadAhead(_ record: WorkRecord) {
         guard record.inLibrary, record.settings.autoDownload ?? settings.downloads.autoDownload else { return }

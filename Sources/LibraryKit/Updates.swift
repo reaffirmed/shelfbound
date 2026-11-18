@@ -110,6 +110,38 @@ public enum UpdateChecker {
     }
 
     /// Notification text for a report: "Hollow Tide: 2 new chapters", or a summary for several works.
+    /// One alert to post. Works get their own alert, grouped by work on the phone and
+    /// the watch, until there are too many; then one summary covers the lot.
+    public struct Alert: Sendable, Hashable {
+        public var id: String
+        public var title: String
+        public var body: String
+        /// The work the alert is about, for its actions; nil for a summary.
+        public var key: WorkKey?
+        public var chapterIDs: [String]
+        /// Groups alerts in Notification Center and on Apple Watch.
+        public var thread: String
+    }
+
+    public static func alerts(_ report: UpdateReport, maxSeparate: Int = 4) -> [Alert] {
+        guard !report.found.isEmpty else { return [] }
+        if report.found.count > maxSeparate, let text = notificationText(report) {
+            return [Alert(id: "updates-summary", title: text.title, body: text.body, key: nil, chapterIDs: [], thread: "updates")]
+        }
+        return report.found.map { found in
+            let n = found.newChapters.count
+            let body: String
+            if n == 1 {
+                body = found.newChapters.first?.title ?? "1 new chapter"
+            } else {
+                let latest = found.newChapters.last?.title
+                body = "\(n) new chapters" + (latest.map { ", up to \($0)" } ?? "")
+            }
+            return Alert(id: "updates-\(found.key.id)", title: found.title, body: body, key: found.key,
+                         chapterIDs: found.newChapters.map(\.id), thread: "work-\(found.key.id)")
+        }
+    }
+
     public static func notificationText(_ report: UpdateReport) -> (title: String, body: String)? {
         guard !report.found.isEmpty else { return nil }
         if report.found.count == 1, let only = report.found.first {

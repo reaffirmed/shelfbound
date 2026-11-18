@@ -94,6 +94,10 @@ In the paged manga reader, the panels button in the top bar zooms to one panel a
 - **Mac:** on an Apple silicon Mac, pick **My Mac (Designed for iPad)** as the run destination in Xcode. The same commands appear in a Library menu.
 - **Shortcuts and Siri:** "Continue reading in Shelfbound", "Check Shelfbound for new chapters", "How many new chapters in Shelfbound" and "Open … in Shelfbound". They also show up as actions in the Shortcuts app, where Check for New Chapters and Get New Chapter Count return a number you can use in automations.
 
+## New-chapter alerts on Apple Watch
+
+Each work that gets new chapters has its own alert, such as "Hollow Tide: 3 new chapters, up to Chapter 87". A later check replaces that work's alert instead of adding another, and when more than four works update at once a single summary covers them. A paired Apple Watch mirrors these alerts. **Download** and **Mark as Read** work from the watch or the Lock Screen without opening the app. To get them on the watch, leave Shelfbound's notifications on under Watch app › Notifications on the iPhone.
+
 ## Content policy
 
 Shelfbound doesn't host content or list repos. Only add sources for sites whose terms allow it, and respect their rate limits and access rules.
