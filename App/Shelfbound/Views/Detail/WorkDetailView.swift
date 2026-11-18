@@ -14,6 +14,7 @@ struct WorkDetailView: View {
     @State private var error: String?
     @State private var verifying: VerificationRequest?
     @State private var migrating = false
+    @State private var showingStyle = false
     @Environment(\.dismiss) private var dismiss
     @State private var reading: ReaderRequest?
     @State private var newestFirst = false
@@ -56,6 +57,9 @@ struct WorkDetailView: View {
         }
         .fullScreenCover(item: $reading) { ReaderView(request: $0) }
         .browserVerification($verifying)
+        .sheet(isPresented: $showingStyle) {
+            ReaderStyleSheet(key: key).presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $migrating) {
             if let record {
                 NavigationStack {
@@ -243,7 +247,7 @@ struct WorkDetailView: View {
     @ViewBuilder
     private func readingOptions(_ record: WorkRecord) -> some View {
         let groups = ChapterOrder.groups(record.chapters)
-        if !record.format.isText || groups.count > 1 || record.format == .novel || record.work?.translators != nil {
+        Group {
             SectionHeader(title: record.format.isText ? "Reading" : "Reading mode")
             VStack(spacing: 12) {
                 if !record.format.isText {
@@ -266,6 +270,16 @@ struct WorkDetailView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if record.format.isText {
+                    Button {
+                        showingStyle = true
+                    } label: {
+                        HStack {
+                            Label("Text style", systemImage: "textformat")
+                            Spacer()
+                            Text(record.settings.readerStyle == nil ? "Same as other works" : "Its own")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     if let translators = record.work?.translators, !translators.isEmpty {
                         LabeledContent("Translated by", value: translators.joined(separator: ", ")).font(.subheadline)
                     }

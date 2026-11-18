@@ -299,6 +299,24 @@ final class AppModel {
         refreshBadge()
     }
 
+    /// The text style for a work: its own, if it has one, else the app's.
+    func readerStyle(for key: WorkKey?) -> ReaderStyle {
+        key.flatMap { library[$0]?.settings.readerStyle } ?? settings.readerStyle
+    }
+
+    /// Changes the style the work uses: its own when it has one, else the app's.
+    func setReaderStyle(_ style: ReaderStyle, for key: WorkKey?) {
+        if let key, library[key]?.settings.readerStyle != nil {
+            updateRecord(key) { $0.settings.readerStyle = style }
+        } else {
+            settings.readerStyle = style
+        }
+    }
+
+    func autoScrollSpeed(for key: WorkKey) -> Double {
+        library[key]?.settings.autoScrollSpeed ?? settings.autoScrollSpeed
+    }
+
     /// Moves a work to another source, keeping read chapters, place, settings and glossary.
     /// Downloads from the old source are deleted, since nothing can open them any more.
     func migrate(_ old: WorkKey, to key: WorkKey, summary: WorkSummary, work: Work?, chapters: [Chapter]) {

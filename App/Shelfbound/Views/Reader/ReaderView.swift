@@ -223,7 +223,7 @@ struct TextReaderScreen: View {
     private var context: ReaderContext { ReaderContext(model: model, key: key) }
 
     var body: some View {
-        let style = model.settings.readerStyle
+        let style = model.readerStyle(for: key)
         let colors = style.theme.colors
         ZStack {
             Color(hex: colors.background).ignoresSafeArea()
@@ -254,7 +254,7 @@ struct TextReaderScreen: View {
         .statusBarHidden(!chrome)
         .task(id: chapterID) { await load() }
         .sheet(isPresented: $showingStyle) {
-            ReaderStyleSheet().presentationDetents([.medium, .large])
+            ReaderStyleSheet(key: key).presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showingChapters) {
             ChapterListSheet(key: key, current: chapterID) { chapterID = $0 }
@@ -279,13 +279,13 @@ struct TextReaderScreen: View {
             return ReaderDocument.html(
                 title: chapter?.title ?? "", kicker: "Chapter \(index + 1)", body: body,
                 notesBefore: skipNotes ? nil : before, notesAfter: skipNotes ? nil : after,
-                style: model.settings.readerStyle, end: end)
+                style: model.readerStyle(for: key), end: end)
         case let .images(pages):
             // A text source returned pictures: show them inline.
             let body = pages.map { "<p><img src=\"\(ReaderDocument.escape($0.url.absoluteString))\"></p>" }.joined()
-            return ReaderDocument.html(title: chapter?.title ?? "", body: body, style: model.settings.readerStyle, end: end)
+            return ReaderDocument.html(title: chapter?.title ?? "", body: body, style: model.readerStyle(for: key), end: end)
         case let .link(url):
-            return ReaderDocument.html(title: chapter?.title ?? "", body: "<p>This chapter is at <a href=\"\(ReaderDocument.escape(url.absoluteString))\">\(ReaderDocument.escape(url.host ?? "another site"))</a>.</p>", style: model.settings.readerStyle, end: end)
+            return ReaderDocument.html(title: chapter?.title ?? "", body: "<p>This chapter is at <a href=\"\(ReaderDocument.escape(url.absoluteString))\">\(ReaderDocument.escape(url.host ?? "another site"))</a>.</p>", style: model.readerStyle(for: key), end: end)
         }
     }
 
@@ -525,7 +525,7 @@ struct VerticalReaderScreen: View {
             Color.black.ignoresSafeArea()
             if !strip.isEmpty {
                 VerticalImageReader(
-                    chapters: strip, start: start, seek: $seek, autoScrollSpeed: model.settings.autoScrollSpeed,
+                    chapters: strip, start: start, seek: $seek, autoScrollSpeed: model.autoScrollSpeed(for: key),
                     moreAfterLast: strip.last.flatMap { context.neighbour(of: $0.id, 1) } != nil,
                     onPosition: { id, value in positionChanged(id, value) },
                     onNearEnd: { Task { await appendNext() } },
@@ -606,14 +606,21 @@ struct VerticalReaderScreen: View {
             Button { showingChapters = true } label: { Image(systemName: "list.bullet").frame(width: 40, height: 40) }
                 .accessibilityLabel("Chapters")
             Menu {
-                Picker("Auto-scroll", selection: $model.settings.autoScrollSpeed) {
+                // Remembered per series: a slow-paced strip and a fast one want different speeds.
+                Picker("Auto-scroll", selection: Binding(
+                    get: { model.autoScrollSpeed(for: key) },
+                    set: { speed in
+                        model.updateRecord(key) { $0.settings.autoScrollSpeed = speed }
+                        model.settings.autoScrollSpeed = speed
+                    }
+                )) {
                     Text("Off").tag(0.0)
                     Text("Slow").tag(40.0)
                     Text("Medium").tag(90.0)
                     Text("Fast").tag(160.0)
                 }
             } label: {
-                Image(systemName: model.settings.autoScrollSpeed > 0 ? "play.circle.fill" : "play.circle").frame(width: 40, height: 40)
+                Image(systemName: model.autoScrollSpeed(for: key) > 0 ? "play.circle.fill" : "play.circle").frame(width: 40, height: 40)
             }
             .accessibilityLabel("Auto-scroll")
         }
@@ -709,17 +716,42 @@ struct ChapterListSheet: View {
 @MainActor
 struct ReaderStyleSheet: View {
     @Environment(AppModel.self) private var model
+    /// From the reader: the work being read, which can have a style of its own.
+    var key: WorkKey? = nil
+
+    private var style: Binding<ReaderStyle> {
+        Binding(get: { model.readerStyle(for: key) }, set: { model.setReaderStyle($0, for: key) })
+    }
+
+    private var ownStyle: Binding<Bool>? {
+        guard let key, model.record(key) != nil else { return nil }
+        return Binding(
+            get: { model.record(key)?.settings.readerStyle != nil },
+            set: { on in
+                let current = model.readerStyle(for: key)
+                model.updateRecord(key) { $0.settings.readerStyle = on ? current : nil }
+            })
+    }
 
     var body: some View {
         @Bindable var model = model
         NavigationStack {
             Form {
+                if let ownStyle {
+                    Section {
+                        Toggle("Only for this work", isOn: ownStyle)
+                    } footer: {
+                        Text(ownStyle.wrappedValue
+                             ? "Changes here apply to this work only. Turn off to go back to your usual style."
+                             : "Changes here apply to every fic and novel. Turn on to give this work its own look.")
+                    }
+                }
                 Section {
                     HStack(spacing: 10) {
                         ForEach(ReaderTheme.allCases) { theme in
                             let c = theme.colors
                             Button {
-                                model.settings.readerStyle.theme = theme
+                                style.wrappedValue.theme = theme
                             } label: {
                                 VStack(spacing: 6) {
                                     Text("Aa")
@@ -728,29 +760,27 @@ struct ReaderStyleSheet: View {
                                         .frame(maxWidth: .infinity, minHeight: 52)
                                         .background(RoundedRectangle(cornerRadius: 10).fill(Color(hex: c.background)))
                                         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(
-                                            model.settings.readerStyle.theme == theme ? Color.shelfAccent : Color(.separator),
-                                            lineWidth: model.settings.readerStyle.theme == theme ? 2.5 : 1))
+                                            style.wrappedValue.theme == theme ? Color.shelfAccent : Color(.separator),
+                                            lineWidth: style.wrappedValue.theme == theme ? 2.5 : 1))
                                     Text(theme.label).font(.caption).foregroundStyle(.primary)
                                 }
                             }
                             .buttonStyle(.plain)
-                            .accessibilityAddTraits(model.settings.readerStyle.theme == theme ? .isSelected : [])
+                            .accessibilityAddTraits(style.wrappedValue.theme == theme ? .isSelected : [])
                         }
                     }
                 }
                 Section {
-                    Stepper("Size \(Int(model.settings.readerStyle.fontSize)) pt", value: $model.settings.readerStyle.fontSize, in: 14...30, step: 1)
-                    Picker("Font", selection: $model.settings.readerStyle.font) {
+                    Stepper("Size \(Int(style.wrappedValue.fontSize)) pt", value: style.fontSize, in: 14...30, step: 1)
+                    Picker("Font", selection: style.font) {
                         ForEach(ReaderFont.allCases) { Text($0.label).tag($0) }
                     }
-                    Picker("Line spacing", selection: $model.settings.readerStyle.lineSpacing) {
+                    Picker("Line spacing", selection: style.lineSpacing) {
                         ForEach(LineSpacing.allCases) { Text($0.label).tag($0) }
                     }
                     .pickerStyle(.segmented)
-                    Stepper("Margins \(Int(model.settings.readerStyle.margin))", value: $model.settings.readerStyle.margin, in: 8...48, step: 4)
-                    Toggle("Justify text", isOn: $model.settings.readerStyle.justify)
-                } footer: {
-                    Text("Applies to every fic and novel. Each work remembers your place.")
+                    Stepper("Margins \(Int(style.wrappedValue.margin))", value: style.margin, in: 8...48, step: 4)
+                    Toggle("Justify text", isOn: style.justify)
                 }
                 Section {
                     Toggle("Pull up for the next chapter", isOn: $model.settings.autoAdvance)
