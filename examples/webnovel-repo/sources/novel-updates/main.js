@@ -6,8 +6,8 @@
 // or offers reader mode.
 //
 // Selectors match the site as of this writing; check them with `shelf-repo run` when
-// something comes back empty. The site may challenge automated clients, in which case
-// requests fail with HTTP 403 and there is nothing a source can do about it.
+// something comes back empty. When the site shows a Cloudflare check, the app asks the
+// person to verify in its browser and retries; the source doesn't handle it.
 
 const BASE = "https://www.novelupdates.com";
 

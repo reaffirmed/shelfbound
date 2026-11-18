@@ -27,6 +27,8 @@ public enum TransferEvent: Sendable {
     /// `file` is a staged copy the manager now owns.
     case finished(taskID: String, file: URL)
     case failed(taskID: String, message: String, resumeData: Data?)
+    /// The host answered with a bot check (such as a Cloudflare challenge).
+    case blocked(taskID: String, url: URL)
 }
 
 /// Moves files over the network. On iPhone this is a background `URLSession`, so pages keep
@@ -65,6 +67,7 @@ public actor DownloadManager {
     private var wakeTask: Task<Void, Never>?
     private var wakeAt: Date?
     private var overLimit = false
+    private var blockedHosts: Set<String> = []
     private var started = false
     private var observers: [UUID: @Sendable (DownloadSnapshot) -> Void] = [:]
 
@@ -150,6 +153,7 @@ public actor DownloadManager {
         s.paused = settings.paused
         s.overLimit = overLimit
         s.limitBytes = settings.storageLimitBytes
+        s.blockedHosts = blockedHosts.sorted()
         return s
     }
 
@@ -200,6 +204,31 @@ public actor DownloadManager {
     }
 
     // MARK: - Downloaded chapters
+
+    /// The person passed the bot check for `host` in the browser: resume its downloads.
+    public func unblock(host: String) {
+        let host = host.lowercased()
+        let cleared = blockedHosts.filter { Self.host($0, isWithin: host) || Self.host(host, isWithin: $0) }
+        guard !cleared.isEmpty else { return }
+        blockedHosts.subtract(cleared)
+        for j in jobs.indices {
+            if let blocked = jobs[j].blockedHost, cleared.contains(blocked) {
+                jobs[j].blockedHost = nil
+                jobs[j].note = nil
+            }
+        }
+        changed()
+        pump()
+    }
+
+    private func isBlocked(_ host: String) -> Bool {
+        blockedHosts.contains { Self.host(host, isWithin: $0) }
+    }
+
+    /// `cdn.example.org` is within `example.org`.
+    static func host(_ host: String, isWithin domain: String) -> Bool {
+        host == domain || host.hasSuffix("." + domain)
+    }
 
     public func isDownloaded(_ ref: ChapterRef) -> Bool { downloaded[ref.id] != nil }
 
@@ -273,6 +302,7 @@ public actor DownloadManager {
 
     private func canRun(_ job: DownloadJob) -> String? {
         if settings.paused { return "Paused" }
+        if let host = job.blockedHost, isBlocked(host) { return "Verify \(host) in the browser to continue" }
         switch network.current {
         case .offline: return "Waiting for a connection"
         case .cellular where settings.wifiOnly && !(job.request.format.isText && settings.cellularForText):
@@ -291,8 +321,11 @@ public actor DownloadManager {
 
         for j in jobs.indices {
             let blocker = canRun(jobs[j])
-            if jobs[j].note != blocker && !jobs[j].isFailed {
-                jobs[j].note = blocker
+            // Pages on a host waiting for a bot check hold only those pages.
+            let waitingOn = jobs[j].pages?.first { !$0.done && isBlocked($0.host) }?.host
+            let note = blocker ?? waitingOn.map { "Verify \($0) in the browser to continue" }
+            if jobs[j].note != note && !jobs[j].isFailed {
+                jobs[j].note = note
                 notesChanged = true
             }
             guard blocker == nil else { continue }
@@ -308,7 +341,7 @@ public actor DownloadManager {
                 }
             case .downloading:
                 guard var pages = jobs[j].pages else { continue }
-                for p in pages.indices where !pages[p].done && !pages[p].inFlight {
+                for p in pages.indices where !pages[p].done && !pages[p].inFlight && !isBlocked(pages[p].host) {
                     let taskID = Self.taskID(jobs[j].id, pages[p].index)
                     if let until = retryAfter[taskID], until > now() {
                         nextWake = min(nextWake ?? until, until)
@@ -367,6 +400,11 @@ public actor DownloadManager {
             return
         }
         switch result {
+        case let .failure(error as BrowserVerificationNeeded):
+            // Not a failure: wait for the person to pass the check, then carry on.
+            jobs[j].state = .waiting
+            jobs[j].blockedHost = error.host
+            blockedHosts.insert(error.host)
         case let .failure(error):
             jobs[j].state = .failed((error as? LocalizedError)?.errorDescription ?? String(describing: error))
         case let .success(content):
@@ -401,7 +439,7 @@ public actor DownloadManager {
     private func handle(_ event: TransferEvent) {
         let taskID: String
         switch event {
-        case let .finished(id, _), let .failed(id, _, _): taskID = id
+        case let .finished(id, _), let .failed(id, _, _), let .blocked(id, _): taskID = id
         }
         guard let parsed = Self.parse(taskID),
               let j = jobs.firstIndex(where: { $0.id == parsed.jobID }),
@@ -428,6 +466,10 @@ public actor DownloadManager {
             } catch {
                 pages[p].attempts += 1
             }
+        case let .blocked(_, url):
+            let host = url.host?.lowercased() ?? pages[p].host
+            // Only this host's pages wait; pages on other hosts carry on.
+            blockedHosts.insert(host)
         case let .failed(_, message, resumeData):
             pages[p].attempts += 1
             if let resumeData {

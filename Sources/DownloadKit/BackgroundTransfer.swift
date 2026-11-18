@@ -1,5 +1,6 @@
 #if canImport(Darwin) && !os(Linux)
 import Foundation
+import ShelfCore
 
 /// Page downloads on background `URLSession`s, so they continue while the app is
 /// suspended or closed. There are two sessions: one that never uses cellular data, and
@@ -58,7 +59,10 @@ public final class BackgroundTransfer: NSObject, FileTransfer, URLSessionDownloa
         } else {
             var urlRequest = URLRequest(url: request.url)
             for (key, value) in request.headers { urlRequest.setValue(value, forHTTPHeaderField: key) }
-            if urlRequest.value(forHTTPHeaderField: "User-Agent") == nil {
+            if let browserAgent = ClearanceStore.shared.userAgent(for: request.url) {
+                // The host was verified in the browser; its clearance cookie needs the same identity.
+                urlRequest.setValue(browserAgent, forHTTPHeaderField: "User-Agent")
+            } else if urlRequest.value(forHTTPHeaderField: "User-Agent") == nil {
                 urlRequest.setValue("Shelfbound/0.2 (iOS reader)", forHTTPHeaderField: "User-Agent")
             }
             task = session.downloadTask(with: urlRequest)
@@ -102,7 +106,15 @@ public final class BackgroundTransfer: NSObject, FileTransfer, URLSessionDownloa
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let id = downloadTask.taskDescription else { return }
         if let http = downloadTask.response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            emit(.failed(taskID: id, message: "HTTP \(http.statusCode)", resumeData: nil))
+            var headers: [String: String] = [:]
+            for (key, value) in http.allHeaderFields { headers[String(describing: key).lowercased()] = String(describing: value) }
+            let body = (try? Data(contentsOf: location)).map { String(decoding: $0.prefix(20_000), as: UTF8.self) } ?? ""
+            if let url = downloadTask.originalRequest?.url ?? http.url,
+               BrowserChallenge.isChallenge(status: http.statusCode, headers: headers, body: body) {
+                emit(.blocked(taskID: id, url: url))
+            } else {
+                emit(.failed(taskID: id, message: "HTTP \(http.statusCode)", resumeData: nil))
+            }
             return
         }
         // The file at `location` is deleted when this method returns, so move it now.

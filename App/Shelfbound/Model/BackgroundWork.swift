@@ -107,6 +107,20 @@ enum Notifications {
         UNUserNotificationCenter.current().add(request)
     }
 
+    /// Downloads paused on a site's bot check, which only the person can pass.
+    static func postVerificationNeeded(hosts: [String]) {
+        guard let first = hosts.first else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Downloads paused"
+        content.body = hosts.count == 1
+            ? "\(first) wants to check you're a person. Open Shelfbound and verify in Downloads to carry on."
+            : "\(hosts.count) sites want to check you're a person. Open Shelfbound and verify in Downloads to carry on."
+        content.threadIdentifier = "verification"
+        content.userInfo = ["opens": "downloads"]
+        let request = UNNotificationRequest(identifier: "verify-\(hosts.joined(separator: ","))", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
     static func workKey(from userInfo: [AnyHashable: Any]) -> WorkKey? {
         guard let source = userInfo[workKey + ".source"] as? String, let id = userInfo[workKey + ".id"] as? String else { return nil }
         return WorkKey(sourceID: source, workID: id)

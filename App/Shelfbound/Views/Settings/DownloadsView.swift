@@ -12,6 +12,26 @@ struct DownloadsView: View {
         @Bindable var model = model
         let snapshot = model.downloads
         Form {
+            if !snapshot.blockedHosts.isEmpty {
+                Section {
+                    ForEach(snapshot.blockedHosts, id: \.self) { host in
+                        HStack {
+                            Label(host, systemImage: "checkmark.shield").foregroundStyle(Color.shelfWarning)
+                            Spacer()
+                            if let url = URL(string: "https://\(host)/") {
+                                VerifyInBrowserButton(request: VerificationRequest(url: url))
+                                    .buttonStyle(.bordered)
+                                    .labelStyle(.titleOnly)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Paused for a browser check")
+                } footer: {
+                    Text("These sites want to check you're a person. Complete the check once and their downloads carry on. Other sites keep downloading meanwhile.")
+                }
+            }
+
             Section { StorageSummary(snapshot: snapshot, limit: model.settings.downloads.storageLimitBytes) }
 
             Section {

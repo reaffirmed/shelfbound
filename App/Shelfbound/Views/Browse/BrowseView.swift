@@ -9,7 +9,7 @@ import SwiftUI
 struct BrowseView: View {
     @Environment(AppModel.self) private var model
     @State private var query = ""
-    @State private var results: [(source: InstalledSource, page: SearchPage?, error: String?)] = []
+    @State private var results: [(source: InstalledSource, page: SearchPage?, error: String?, verify: VerificationRequest?)] = []
     @State private var searching = false
     @State private var addingRepo = false
 
@@ -27,6 +27,9 @@ struct BrowseView: View {
             .searchable(text: $query, prompt: "Search all sources")
             .onSubmit(of: .search) { Task { await searchAll() } }
             .onChange(of: query) { _, value in if value.isEmpty { results = [] } }
+            .onChange(of: model.verifiedCount) { _, _ in
+                if results.contains(where: { $0.verify != nil }) { Task { await searchAll() } }
+            }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { addingRepo = true } label: { Image(systemName: "plus") }
@@ -123,6 +126,7 @@ struct BrowseView: View {
             Section {
                 if let error = result.error {
                     Text(error).font(.footnote).foregroundStyle(.secondary)
+                    if let verify = result.verify { VerifyInBrowserButton(request: verify) }
                 } else if let page = result.page, page.results.isEmpty {
                     Text("No results").font(.footnote).foregroundStyle(.secondary)
                 } else if let page = result.page {
@@ -149,18 +153,23 @@ struct BrowseView: View {
         searching = true
         defer { searching = false }
         let sources = model.searchableSources
-        results = sources.map { (source: $0, page: nil, error: nil) }
-        await withTaskGroup(of: (String, SearchPage?, String?).self) { group in
+        results = sources.map { (source: $0, page: nil, error: nil, verify: nil) }
+        await withTaskGroup(of: (String, SearchPage?, String?, URL?).self) { group in
             for source in sources {
                 guard let runtime = try? model.runtime(for: source.id) else { continue }
                 group.addTask {
-                    do { return (source.id, try await runtime.search(query: text, page: 1), nil) } catch { return (source.id, nil, error.readable) }
+                    do {
+                        return (source.id, try await runtime.search(query: text, page: 1), nil, nil)
+                    } catch {
+                        return (source.id, nil, error.readable, (error as? BrowserVerificationNeeded)?.url)
+                    }
                 }
             }
-            for await (id, page, error) in group {
+            for await (id, page, error, verifyURL) in group {
                 if let i = results.firstIndex(where: { $0.source.id == id }) {
                     results[i].page = page
                     results[i].error = error ?? (page == nil ? "Search failed" : nil)
+                    results[i].verify = verifyURL.map { VerificationRequest(url: $0) }
                 }
             }
         }
@@ -217,6 +226,7 @@ struct SourceSearchView: View {
     @State private var hasMore = false
     @State private var loading = false
     @State private var error: String?
+    @State private var verifying: VerificationRequest?
     @State private var filters: [SearchFilter] = []
     @State private var values: [String: [String]] = [:]
 
@@ -256,6 +266,10 @@ struct SourceSearchView: View {
         .navigationTitle(source.manifest.name)
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadFilters() }
+        .browserVerification($verifying)
+        .onChange(of: model.verifiedCount) { _, _ in
+            if error != nil, !query.isEmpty { Task { await run(page: 1) } }
+        }
     }
 
     private func loadFilters() async {
@@ -278,6 +292,7 @@ struct SourceSearchView: View {
             error = nil
         } catch {
             self.error = error.readable
+            if let request = error.verification { verifying = request }
         }
     }
 }

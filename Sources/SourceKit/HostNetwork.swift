@@ -55,6 +55,10 @@ extension HostNetwork {
 /// URLSession-backed network with a minimum gap between requests per source,
 /// so community sources are gentle with the sites they read. A 429 or 503 with
 /// `Retry-After` pushes that source's next request back.
+///
+/// A bot-check page (such as a Cloudflare challenge) throws `BrowserVerificationNeeded`
+/// so the app can ask the person to pass it in a browser. Hosts they've verified are
+/// sent the browser's User-Agent, which their clearance cookie is tied to.
 public actor URLSessionNetwork: HostNetwork {
     private let session: URLSession
     private let defaultInterval: Duration
@@ -63,9 +67,12 @@ public actor URLSessionNetwork: HostNetwork {
     private let clock = ContinuousClock()
     public static let userAgent = "Shelfbound/0.2 (iOS reader)"
 
-    public init(session: URLSession = .shared, minimumInterval: Duration = .milliseconds(1000)) {
+    private let clearances: ClearanceStore?
+
+    public init(session: URLSession = .shared, minimumInterval: Duration = .milliseconds(1000), clearances: ClearanceStore? = nil) {
         self.session = session
         self.defaultInterval = minimumInterval
+        self.clearances = clearances
     }
 
     /// Uses a longer gap for one source, from its manifest's `rateLimit`. Never shorter than the default.
@@ -81,7 +88,9 @@ public actor URLSessionNetwork: HostNetwork {
         try await waitForSlot(sourceID)
 
         var request = request
-        if request.value(forHTTPHeaderField: "User-Agent") == nil {
+        if let url = request.url, let browserAgent = clearances?.userAgent(for: url) {
+            request.setValue(browserAgent, forHTTPHeaderField: "User-Agent")
+        } else if request.value(forHTTPHeaderField: "User-Agent") == nil {
             request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         }
         #if canImport(FoundationNetworking)
@@ -98,6 +107,9 @@ public actor URLSessionNetwork: HostNetwork {
             backOff(sourceID, retryAfter: headers["retry-after"])
         }
         let body = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+        if let url = request.url, BrowserChallenge.isChallenge(status: http?.statusCode ?? 0, headers: headers, body: body) {
+            throw BrowserVerificationNeeded(url: url)
+        }
         return HostResponse(
             status: http?.statusCode ?? 0,
             url: response.url?.absoluteString ?? request.url?.absoluteString ?? "",

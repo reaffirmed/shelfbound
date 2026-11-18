@@ -12,6 +12,7 @@ struct WorkDetailView: View {
 
     @State private var loading = false
     @State private var error: String?
+    @State private var verifying: VerificationRequest?
     @State private var reading: ReaderRequest?
     @State private var newestFirst = false
     @State private var showingGlossary = false
@@ -52,6 +53,10 @@ struct WorkDetailView: View {
             await load()
         }
         .fullScreenCover(item: $reading) { ReaderView(request: $0) }
+        .browserVerification($verifying)
+        .onChange(of: model.verifiedCount) { _, _ in
+            if error != nil { Task { await load() } }
+        }
         .sheet(isPresented: $showingGlossary) {
             NavigationStack { GlossaryView(key: key) }
         }
@@ -66,6 +71,8 @@ struct WorkDetailView: View {
         } catch {
             // Offline with downloads still works from what's saved.
             self.error = record?.chapters.isEmpty == false ? "Showing saved info. \(error.readable)" : error.readable
+            // Opening a work is the person's own action, so ask for the site's check right away.
+            if let request = error.verification { verifying = request }
         }
     }
 

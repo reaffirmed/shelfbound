@@ -46,14 +46,19 @@ final class AppModel {
     private(set) var downloads = DownloadSnapshot()
     private(set) var isCheckingUpdates = false
     private(set) var lastReport: UpdateReport?
+    /// Goes up each time the person passes a site's bot check, so screens showing that
+    /// error can try again.
+    private(set) var verifiedCount = 0
 
     var lastError: String?
     var showingError = false
     var pendingRepoLink: RepoLink?
     /// Set by a notification tap; the library opens this work.
     var pendingOpen: WorkKey?
+    /// A tapped "downloads paused" notification: show the Downloads screen.
+    var pendingShowDownloads = false
 
-    @ObservationIgnored let network = URLSessionNetwork()
+    @ObservationIgnored let network = URLSessionNetwork(clearances: .shared)
     @ObservationIgnored let networkMonitor: NetworkMonitor
     @ObservationIgnored let transfer: BackgroundTransfer
     @ObservationIgnored let downloadManager: DownloadManager
@@ -97,7 +102,7 @@ final class AppModel {
         networkMonitor.onChange = { _ in Task { await manager.networkChanged() } }
         Task {
             _ = await manager.observe { snapshot in
-                Task { @MainActor in AppModel.shared.downloads = snapshot }
+                Task { @MainActor in AppModel.shared.downloadsChanged(snapshot) }
             }
             await manager.start()
         }
@@ -369,6 +374,23 @@ final class AppModel {
 
     func deleteDownloads(of key: WorkKey) {
         Task { await downloadManager.deleteWork(key) }
+    }
+
+    private func downloadsChanged(_ snapshot: DownloadSnapshot) {
+        let newlyBlocked = Set(snapshot.blockedHosts).subtracting(downloads.blockedHosts)
+        downloads = snapshot
+        if !newlyBlocked.isEmpty, UIApplication.shared.applicationState != .active {
+            Notifications.postVerificationNeeded(hosts: newlyBlocked.sorted())
+        }
+    }
+
+    // MARK: - Browser checks
+
+    /// The person passed `host`'s bot check in the browser sheet.
+    func didVerify(host: String) {
+        verifiedCount += 1
+        // Screens watching verifiedCount retry; paused downloads for the host resume.
+        Task { await downloadManager.unblock(host: host) }
     }
 
     // MARK: - Update checks

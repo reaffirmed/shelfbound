@@ -23,8 +23,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        let key = Notifications.workKey(from: response.notification.request.content.userInfo)
-        await MainActor.run { AppModel.shared.pendingOpen = key }
+        let userInfo = response.notification.request.content.userInfo
+        let key = Notifications.workKey(from: userInfo)
+        let showDownloads = userInfo["opens"] as? String == "downloads"
+        await MainActor.run {
+            if showDownloads { AppModel.shared.pendingShowDownloads = true } else { AppModel.shared.pendingOpen = key }
+        }
     }
 }
 
@@ -89,6 +93,9 @@ struct RootView: View {
         }
         .onChange(of: model.pendingOpen) { _, key in
             if key != nil { tab = .library }
+        }
+        .onChange(of: model.pendingShowDownloads) { _, show in
+            if show { tab = .settings }
         }
     }
 }

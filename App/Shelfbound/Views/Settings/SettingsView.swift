@@ -57,7 +57,8 @@ struct SettingsView: View {
                     NavigationLink {
                         DownloadsView()
                     } label: {
-                        row("Downloads", icon: "arrow.down.circle", color: .shelfAccent, value: model.downloads.totalBytes.byteString)
+                        row("Downloads", icon: "arrow.down.circle", color: .shelfAccent,
+                            value: model.downloads.blockedHosts.isEmpty ? model.downloads.totalBytes.byteString : "Needs a browser check")
                     }
                 }
 
@@ -91,6 +92,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .navigationDestination(isPresented: $model.pendingShowDownloads) { DownloadsView() }
             .sheet(isPresented: $showingStyle) { ReaderStyleSheet().presentationDetents([.medium, .large]) }
         }
     }

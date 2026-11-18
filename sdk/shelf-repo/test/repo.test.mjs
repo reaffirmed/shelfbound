@@ -37,3 +37,13 @@ test("runner calls a source with a mocked fetch", async () => {
   const { call } = await loadSource(path.join(template, "sources/gutenberg"), { fetchImpl: fakeFetch });
   assert.deepEqual(await call("search", "x", 1), { results: [], hasMore: false });
 });
+
+test("runner reports bot checks instead of handing the page to the source", async () => {
+  const { BrowserVerificationNeeded } = await import("../lib/runner.mjs");
+  const challenge = async (url) => ({
+    status: 403, url, headers: [["server", "cloudflare"], ["cf-mitigated", "challenge"]],
+    text: async () => "<title>Just a moment...</title>",
+  });
+  const { call } = await loadSource(path.join(template, "sources/gutenberg"), { fetchImpl: challenge });
+  await assert.rejects(call("search", "x", 1), (e) => e instanceof BrowserVerificationNeeded || /bot check/.test(e.message));
+});

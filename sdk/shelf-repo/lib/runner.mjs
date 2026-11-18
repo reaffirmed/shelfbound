@@ -7,6 +7,24 @@ import path from "node:path";
  * so authors can test without a phone. This is a development tool, not a security
  * boundary; the app's sandbox is JavaScriptCore.
  */
+/** Same rule as the app's `BrowserChallenge.isChallenge`. Header keys are lowercased. */
+export function isChallenge(status, headers, body) {
+  if ((headers["cf-mitigated"] || "").toLowerCase() === "challenge") return true;
+  if (![403, 503, 429].includes(status)) return false;
+  if (!(headers.server || "").toLowerCase().includes("cloudflare") && !headers["cf-ray"]) return false;
+  const head = String(body).slice(0, 20000).toLowerCase();
+  return ["/cdn-cgi/challenge-platform/", "cf-chl-", "<title>just a moment", "cf_chl_opt", "cf-turnstile"].some((s) => head.includes(s));
+}
+
+export class BrowserVerificationNeeded extends Error {
+  constructor(url) {
+    super(`${url} shows a bot check. In the app, the person verifies in the browser and the source is retried. ` +
+      "To test from here, open the page in a browser first, or use saved pages.");
+    this.name = "BrowserVerificationNeeded";
+    this.url = url;
+  }
+}
+
 export async function loadSource(sourceDir, { settings = {}, fetchImpl = globalThis.fetch, log = console.error, throttle } = {}) {
   const manifest = JSON.parse(await readFile(path.join(sourceDir, "manifest.json"), "utf8"));
   const script = await readFile(path.join(sourceDir, "main.js"), "utf8");
@@ -48,7 +66,12 @@ export async function loadSource(sourceDir, { settings = {}, fetchImpl = globalT
           if (res.status === 303 || ((res.status === 301 || res.status === 302) && method === "POST")) { method = "GET"; body = undefined; }
           continue;
         }
-        return { status: res.status, url: res.url || url, headers, body: await res.text() };
+        const text = await res.text();
+        if (isChallenge(res.status, headers, text)) {
+          // The app shows "Verify in browser" here; the person passes the check themselves.
+          throw new BrowserVerificationNeeded(req.url);
+        }
+        return { status: res.status, url: res.url || url, headers, body: text };
       }
     },
     async fetchJSON(req) {
@@ -60,6 +83,9 @@ export async function loadSource(sourceDir, { settings = {}, fetchImpl = globalT
       if (!cheerio) throw new Error("host.select needs the optional 'cheerio' package: npm install cheerio");
       const $ = cheerio.load(String(html));
       return $(selector).toArray().map((el) => ({ text: $(el).text().trim().replace(/\s+/g, " "), html: $(el).html() ?? "", outerHTML: $.html(el), attrs: { ...el.attribs } }));
+    },
+    needsBrowserVerification(url) {
+      throw new BrowserVerificationNeeded(String(url));
     },
     log: (...p) => log(`[${manifest.id}]`, ...p),
     settings: Object.freeze({ get: (k) => settings[k] ?? null }),

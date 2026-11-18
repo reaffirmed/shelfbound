@@ -60,6 +60,7 @@ The app only accepts `https` repos, so for the simulator push `dist/` to GitHub 
 - One JavaScriptCore VM per source. No network, file or timer APIs exist inside it.
 - The only way out is `host.fetch`, which reaches only the domains in the source's manifest (redirects included) and is rate-limited to about one request per second per source, or slower if the manifest asks. The app backs off when a site answers 429 or 503.
 - Results are JSON, validated into Swift types before the UI sees them.
+- Sites behind a Cloudflare check: the person passes it themselves in an in-app browser sheet ("Verify in browser"). The app keeps that site's cookies and browser User-Agent until the check expires, then asks again. Downloads from the site pause, and the person gets a notification, rather than the downloads failing. The app never solves the check itself.
 - The text reader shows chapter HTML with page JavaScript turned off and a strict Content-Security-Policy.
 - Packages are signed by the repo's key. The app pins the key on first add and refuses packages that don't match.
 

@@ -25,15 +25,28 @@ private final class FakeTransfer: FileTransfer, @unchecked Sendable {
         handler?(.finished(taskID: taskID, file: file))
     }
 
+    func block(_ taskID: String, host: String) {
+        handler?(.blocked(taskID: taskID, url: URL(string: "https://\(host)/x.jpg")!))
+    }
+
     func fail(_ taskID: String) {
         handler?(.failed(taskID: taskID, message: "boom", resumeData: Data("partial".utf8)))
     }
 }
 
+/// The source site's bot check, passed when `verified` is set.
+private final class FakeCheck: @unchecked Sendable {
+    var verified = false
+}
+
 private struct FakeResolver: ChapterResolver {
     var pages: Int
+    var check = FakeCheck()
     func content(for ref: ChapterRef) async throws -> ChapterContent {
-        if ref.chapterID.hasPrefix("text") { return .text(html: "<p>Hello</p>", notesBefore: nil, notesAfter: nil) }
+        if ref.chapterID.hasPrefix("checked"), !check.verified {
+            throw BrowserVerificationNeeded(url: URL(string: "https://site.example.org/\(ref.chapterID)")!)
+        }
+        if ref.chapterID.hasPrefix("text") || ref.chapterID.hasPrefix("checked") { return .text(html: "<p>Hello</p>", notesBefore: nil, notesAfter: nil) }
         return .images((0..<pages).map { ImagePage(url: URL(string: "https://img\($0 % 2).example.org/\(ref.chapterID)/\($0).jpg")!) })
     }
 }
@@ -68,11 +81,11 @@ final class DownloadKitTests: XCTestCase {
 
     private func makeManager(
         pages: Int = 3, network: FakeNetwork = FakeNetwork(), settings: DownloadSettings = DownloadSettings(),
-        throttle: HostThrottle = HostThrottle(maxPerHost: 1, minInterval: 0, maxTotal: 6)
+        throttle: HostThrottle = HostThrottle(maxPerHost: 1, minInterval: 0, maxTotal: 6), check: FakeCheck = FakeCheck()
     ) -> (DownloadManager, FakeTransfer) {
         let transfer = FakeTransfer(scratch: root)
         let manager = DownloadManager(
-            layout: DownloadLayout(root: root.appendingPathComponent("Downloads")), resolver: FakeResolver(pages: pages),
+            layout: DownloadLayout(root: root.appendingPathComponent("Downloads")), resolver: FakeResolver(pages: pages, check: check),
             transfer: transfer, network: network, settings: settings, throttle: throttle)
         return (manager, transfer)
     }
@@ -129,6 +142,45 @@ final class DownloadKitTests: XCTestCase {
         network.current = .wifi
         await manager.networkChanged()
         await waitUntil { !transfer.startedIDs.isEmpty }
+    }
+
+    func testBotCheckOnPagesPausesThatHostUntilVerified() async throws {
+        let (manager, transfer) = makeManager(pages: 4)
+        await manager.start()
+        await manager.enqueue([request("c1")])
+        await waitUntil { transfer.startedIDs.count == 2 }
+        let img0 = transfer.started.first { $0.url.host == "img0.example.org" }!.taskID
+        let img1 = transfer.started.first { $0.url.host == "img1.example.org" }!.taskID
+        transfer.block(img0, host: "img0.example.org")
+        transfer.finish(img1)
+
+        // img1 carries on; img0 waits, and the job isn't failed.
+        await waitUntil { transfer.startedIDs.count == 3 }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(transfer.started.filter { $0.url.host == "img0.example.org" }.count, 1)
+        var snapshot = await manager.snapshot
+        XCTAssertEqual(snapshot.blockedHosts, ["img0.example.org"])
+        XCTAssertFalse(snapshot.jobs[0].isFailed)
+
+        await manager.unblock(host: "example.org")
+        await waitUntil { transfer.started.filter { $0.url.host == "img0.example.org" }.count == 2 }
+        snapshot = await manager.snapshot
+        XCTAssertEqual(snapshot.blockedHosts, [])
+    }
+
+    func testBotCheckOnTheSourceHoldsTheChapterInsteadOfFailing() async throws {
+        let check = FakeCheck()
+        let (manager, _) = makeManager(check: check)
+        await manager.start()
+        await manager.enqueue([request("checked-1", format: .fic)])
+        await waitUntil { await manager.snapshot.blockedHosts == ["site.example.org"] }
+        let job = await manager.snapshot.jobs.first
+        XCTAssertEqual(job?.blockedHost, "site.example.org")
+        XCTAssertEqual(job?.isFailed, false)
+
+        check.verified = true
+        await manager.unblock(host: "site.example.org")
+        await waitUntil { await manager.isDownloaded(ChapterRef(work: work, chapterID: "checked-1")) }
     }
 
     func testFailedPageRetriesWithResumeData() async throws {

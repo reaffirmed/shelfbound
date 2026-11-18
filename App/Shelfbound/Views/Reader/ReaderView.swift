@@ -50,6 +50,8 @@ enum ChapterPhase: Equatable {
     case loaded(ChapterContent)
     case failed(String)
     case unhandledLink(URL)
+    /// The site wants the person to pass a bot check in the browser first.
+    case needsVerification(URL)
 }
 
 /// Where the reader is in the work's chapter list, and saving progress.
@@ -75,6 +77,8 @@ struct ReaderContext {
             return .loaded(content)
         } catch let error as UnhandledLink {
             return .unhandledLink(error.url)
+        } catch let error as BrowserVerificationNeeded {
+            return .needsVerification(error.url)
         } catch {
             return .failed(error.readable)
         }
@@ -110,6 +114,7 @@ struct ChapterStatusView: View {
     let useContent: (ChapterContent) -> Void
     @State private var extracting = false
     @State private var extractError: String?
+    @State private var verifying: VerificationRequest?
 
     var body: some View {
         Group {
@@ -134,12 +139,27 @@ struct ChapterStatusView: View {
                         Task {
                             extracting = true
                             defer { extracting = false }
-                            do { useContent(try await model.readerMode(url)) } catch { extractError = error.readable }
+                            do {
+                                useContent(try await model.readerMode(url))
+                            } catch {
+                                if let request = error.verification { verifying = request }
+                                extractError = error.readable
+                            }
                         }
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(extracting)
                     Button("Open in browser") { openURL(url) }
+                }
+            case let .needsVerification(url):
+                ContentUnavailableView {
+                    Label("\(url.host ?? "This site") wants to check you're a person", systemImage: "checkmark.shield")
+                } description: {
+                    Text("Complete the check in the browser once, and this chapter loads. Shelfbound doesn't solve these checks for you.")
+                } actions: {
+                    Button("Verify in browser") { verifying = VerificationRequest(url: url) }
+                        .buttonStyle(.borderedProminent)
+                    Button("Try again", action: retry)
                 }
             case .loaded:
                 EmptyView()
@@ -147,6 +167,10 @@ struct ChapterStatusView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environment(\.colorScheme, dark ? .dark : .light)
+        .browserVerification($verifying)
+        .onChange(of: model.verifiedCount) { _, _ in
+            if case .needsVerification = phase { retry() } else if extractError != nil { extractError = nil }
+        }
     }
 }
 

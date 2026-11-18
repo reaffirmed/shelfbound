@@ -89,6 +89,8 @@ public struct DownloadJob: Codable, Sendable, Hashable, Identifiable {
     public var createdAt: Date
     /// Why the job isn't moving, for the queue screen ("Waiting for Wi-Fi").
     public var note: String?
+    /// The host whose bot check stopped this job, until the person verifies it.
+    public var blockedHost: String?
 
     public var id: String { request.ref.id }
     public var ref: ChapterRef { request.ref }
@@ -132,6 +134,9 @@ public struct DownloadSnapshot: Sendable, Hashable {
     public var downloaded: [String: DownloadedChapter] = [:]
     public var paused = false
     public var overLimit = false
+    /// Hosts waiting for the person to pass a bot check in the browser. Their downloads
+    /// are paused, not failed.
+    public var blockedHosts: [String] = []
     public var limitBytes: Int64 = 0
 
     public init() {}

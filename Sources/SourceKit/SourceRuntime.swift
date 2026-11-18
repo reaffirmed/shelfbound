@@ -31,6 +31,9 @@ public final class SourceRuntime: @unchecked Sendable {
     private var lastException: String?
     private var isClosed = false
     private var optionalFunctions: Set<String> = []
+    /// Set when a fetch hit a bot check, or the source said a host needs one. The call
+    /// that's running then fails with `BrowserVerificationNeeded`, whatever the script threw.
+    private var verificationNeeded: BrowserVerificationNeeded?
 
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
@@ -147,7 +150,13 @@ public final class SourceRuntime: @unchecked Sendable {
     /// Must run on `queue`.
     private func finish(_ id: Int, _ result: Result<String, Error>) {
         guard let continuation = calls.removeValue(forKey: id) else { return }
-        continuation.resume(with: result)
+        let verification = verificationNeeded
+        verificationNeeded = nil
+        if case .failure = result, let verification {
+            continuation.resume(throwing: verification)
+        } else {
+            continuation.resume(with: result)
+        }
     }
 
     // MARK: - Setup
@@ -199,7 +208,13 @@ public final class SourceRuntime: @unchecked Sendable {
         native.setObject(unsafeBitCast(select, to: AnyObject.self), forKeyedSubscript: "select" as NSString)
         native.setObject(unsafeBitCast(log, to: AnyObject.self), forKeyedSubscript: "log" as NSString)
         native.setObject(unsafeBitCast(setting, to: AnyObject.self), forKeyedSubscript: "setting" as NSString)
+        let verify: @convention(block) (JSValue) -> Void = { [weak self] value in
+            guard let self, let url = URL(string: value.toString() ?? ""), url.scheme == "https", self.policy.allows(url) else { return }
+            self.verificationNeeded = BrowserVerificationNeeded(url: url)
+        }
+
         native.setObject(unsafeBitCast(done, to: AnyObject.self), forKeyedSubscript: "done" as NSString)
+        native.setObject(unsafeBitCast(verify, to: AnyObject.self), forKeyedSubscript: "verify" as NSString)
         context.setObject(native, forKeyedSubscript: "__native" as NSString)
 
         context.evaluateScript(Prelude.script, withSourceURL: URL(string: "shelfbound://prelude.js"))
@@ -249,7 +264,11 @@ public final class SourceRuntime: @unchecked Sendable {
                 self.queue.async { self.resolveFetch(id: id, ok: true, payload: payload) }
             } catch {
                 let message = error.localizedDescription
-                self.queue.async { self.resolveFetch(id: id, ok: false, payload: message) }
+                let verification = error as? BrowserVerificationNeeded
+                self.queue.async {
+                    if let verification { self.verificationNeeded = verification }
+                    self.resolveFetch(id: id, ok: false, payload: message)
+                }
             }
         }
     }

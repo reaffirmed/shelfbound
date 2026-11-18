@@ -15,4 +15,4 @@ npx ../../sdk/shelf-repo run sources/novel-updates search "cultivator" 1
 npx ../../sdk/shelf-repo build
 ```
 
-The selectors match the sites at the time of writing. Novel Updates may challenge automated clients; when it does, requests fail with HTTP 403 and the app shows that error. Check the site's terms before publishing a repo with these sources.
+The selectors match the sites at the time of writing. Novel Updates and many translator sites sit behind Cloudflare. When a check appears, the app asks you to verify in its browser once, then keeps going. Check the site's terms before publishing a repo with these sources.

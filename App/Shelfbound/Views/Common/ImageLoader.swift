@@ -81,11 +81,18 @@ final class ImageLoader: @unchecked Sendable {
             defer { release(host) }
             var request = URLRequest(url: page.url)
             for (field, value) in page.headers ?? [:] { request.setValue(value, forHTTPHeaderField: field) }
-            if request.value(forHTTPHeaderField: "User-Agent") == nil {
+            if let browserAgent = ClearanceStore.shared.userAgent(for: page.url) {
+                request.setValue(browserAgent, forHTTPHeaderField: "User-Agent")
+            } else if request.value(forHTTPHeaderField: "User-Agent") == nil {
                 request.setValue("Shelfbound/0.2 (iOS reader)", forHTTPHeaderField: "User-Agent")
             }
             let (body, response) = try await session.data(for: request)
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                var headers: [String: String] = [:]
+                for (key, value) in http.allHeaderFields { headers[String(describing: key).lowercased()] = String(describing: value) }
+                if BrowserChallenge.isChallenge(status: http.statusCode, headers: headers, body: String(decoding: body.prefix(20_000), as: UTF8.self)) {
+                    throw BrowserVerificationNeeded(url: page.url)
+                }
                 throw URLError(.badServerResponse, userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode)"])
             }
             data = body

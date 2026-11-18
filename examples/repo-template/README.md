@@ -53,9 +53,16 @@ The only API available is `host`:
 - `host.fetch(urlOrRequest)` returns `{ status, url, headers, body }`. A request is `{ url, method?, headers?, body?, redirect? }`. Only hosts in `manifest.domains` are reachable, including redirect targets. With `redirect: "manual"` the redirect response itself comes back, so you can read `headers.location`.
 - `host.fetchJSON(urlOrRequest)` fetches and parses JSON.
 - `host.select(html, cssSelector)` returns `[{ text, html, outerHTML, attrs }]`.
+- `host.needsBrowserVerification(url)` stops the call and asks the person to open `url` in the app's browser to pass a check the app can't detect by itself. Cloudflare challenges are detected for you: `host.fetch` throws on them and the app takes over.
 - `host.settings.get(key)` and `host.log(...)`. `host.settings.get("maxRating")` is the highest rating the person chose to see.
 
 There are no timers, files, `URL` class, or other network APIs. Use `encodeURIComponent` to build query strings.
+
+## Sites with bot checks
+
+When a site answers with a Cloudflare challenge (or a source calls `host.needsBrowserVerification`), the app shows **Verify in browser**. The person completes the check themselves in a web view. The app then keeps that site's cookies and sends the same browser User-Agent on requests to the site, until the clearance expires and the app asks again. Background downloads from that site pause, and the person gets a notification, rather than the downloads failing.
+
+Sources don't need to do anything for this. Don't add challenge solvers, CAPTCHA services or proxy rotation: repos that do can be blocked.
 
 ## Testing a source
 
