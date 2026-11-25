@@ -66,6 +66,12 @@ The app only accepts `https` repos, so for the simulator push `dist/` to GitHub 
 
 See `examples/repo-template/README.md` for the source API.
 
+## Importing from other apps
+
+Settings › Import library reads a Paperback backup (`.pas4`, a zip), an Aidoku backup (`.aib`), or a list of links such as AO3 bookmarks. Each work is found on an installed source, by its link when a source has `idFromURL`, otherwise by searching its title, and read chapters carry over by chapter number. The backup readers were written from the apps' formats without a real backup to test against, so try one and report what doesn't come through.
+
+The app uses [ZIPFoundation](https://github.com/weichsel/ZIPFoundation) (MIT) to open Paperback backups.
+
 ## Content policy
 
 Shelfbound doesn't host content or list repos. Only add sources for sites whose terms allow it, and respect their rate limits and access rules.

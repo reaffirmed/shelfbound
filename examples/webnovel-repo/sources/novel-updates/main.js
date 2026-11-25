@@ -45,6 +45,11 @@ function chapterNumber(title) {
 }
 
 globalThis.source = {
+  // For importing links: https://www.novelupdates.com/series/some-novel/ → "some-novel".
+  async idFromURL(url) {
+    return slugFrom(url);
+  },
+
   async search(query, pageNumber) {
     const html = await page(`${BASE}/series-finder/?sf=1&sh=${encodeURIComponent(query)}&sort=srank&order=asc&pg=${pageNumber || 1}`);
     const results = host.select(html, ".search_main_box_nu").map((box) => {

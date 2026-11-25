@@ -86,6 +86,14 @@ public final class SourceRuntime: @unchecked Sendable {
         return try await invoke("resolveLink", [url.absoluteString])
     }
 
+    /// The source's work ID for a link to a work on its site, from the optional `idFromURL`.
+    /// Nil when the source doesn't recognise the link.
+    public func workID(forURL url: URL) async throws -> String? {
+        guard implements("idFromURL"), policy.allows(url) else { return nil }
+        let id: String? = try await invoke("idFromURL", [url.absoluteString])
+        return id.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
     /// Whether the script defines an optional function.
     public func implements(_ function: String) -> Bool { optionalFunctions.contains(function) }
 
@@ -236,7 +244,7 @@ public final class SourceRuntime: @unchecked Sendable {
                 throw SourceError.missingFunction(name)
             }
         }
-        for name in ["getFilters", "resolveLink", "getLatest"] {
+        for name in ["getFilters", "resolveLink", "getLatest", "idFromURL"] {
             if let fn = source.objectForKeyedSubscript(name), !fn.isUndefined, !fn.isNull {
                 optionalFunctions.insert(name)
             }

@@ -7,6 +7,9 @@ options:
 packages:
   ShelfKit:
     path: ..
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation
+    from: 0.9.19
 targets:
   Shelfbound:
     type: application
@@ -24,6 +27,7 @@ targets:
         product: LibraryKit
       - package: ShelfKit
         product: DownloadKit
+      - package: ZIPFoundation
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.shelfbound.Shelfbound
