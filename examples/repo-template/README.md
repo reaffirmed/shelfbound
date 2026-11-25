@@ -31,7 +31,8 @@ Publish `dist/` and give people the URL of the folder. The app pins your public 
 | `contentRating` | `safe`, `mature` or `explicit`. People choose the highest rating they see in Settings |
 | `languages`, `domains` | Languages, and every host the source contacts. `*.example.org` allows subdomains |
 | `rateLimit` | Optional. `{ "minIntervalMs": 3000 }` spaces requests further apart than the default one second |
-| `capabilities` | Optional. `filters` (has `getFilters`), `links` (has `resolveLink`), `listings` (has `getListings` and `getListing`), `discovery` (chapters live on other sites) |
+| `capabilities` | Optional. `filters` (has `getFilters`), `links` (has `resolveLink`), `listings` (has `getListings` and `getListing`), `account` (sign-in, see below), `discovery` (chapters live on other sites) |
+| `account` | With the `account` capability: `{ "loginURL": "https://example.org/login" }`, the site's own sign-in page on one of `domains` |
 
 `main.js` sets `globalThis.source` to an object with these async functions:
 
@@ -46,6 +47,17 @@ Publish `dist/` and give people the URL of the folder. The app pins your public 
 | `getListing(id, page)` | Optional, with the `listings` capability. One page of a list from `getListings`, shaped like `search`'s result: `{ results, hasMore }` |
 | `idFromURL(url)` | Optional. The work ID for a link to a work on your site, or `null`. Lets people import a list of links (AO3 bookmarks, a reading list) |
 | `resolveLink(url)` | Optional, with the `links` capability. Reads a chapter page on one of your `domains` that another source handed over, and returns chapter content |
+
+With the `account` capability, the person signs in on `account.loginURL` in a web view. The app keeps the site's cookies in the Keychain (never a password), sends them with every `host.fetch` to the site, and passes the username as `host.settings.get("account")` (null when signed out). The source adds:
+
+| Function | Returns |
+| --- | --- |
+| `getAccount()` | `{ username, url? }` for whoever the site shows as signed in, or `null`. Called after sign-in and from "Check sign-in" |
+| `getAccountLists()` | `[{ id, title, subtitle?, importable? }]`: the person's own lists, like bookmarks or a reading list. `importable` lists get **Import** and **Keep in sync** in Settings › Accounts |
+| `getAccountList(id, page)` | One page of a list, shaped like `search`'s result |
+| `setWorkState(id, key, value)` | Optional. `key` is `markedForLater`, `subscribed` or `kudos`. Does it on the site and returns the work's state after, like `getWork`'s `account` |
+
+`getWork` may then return `account: { markedForLater?, subscribed?, kudos? }`, which shows as buttons on the work's page. `setWorkState` only runs when the person taps one of those buttons; syncing lists only ever adds to the library.
 
 Dates are ISO 8601 strings, like `new Date().toISOString()` or `"2024-05-01"`.
 

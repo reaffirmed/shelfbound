@@ -22,6 +22,7 @@ struct WorkDetailView: View {
     @State private var showingHighlights = false
     @State private var showingTranslation = false
     @State private var translatingSummary = false
+    @State private var busyAction: WorkAction?
 
     private var key: WorkKey { route.key }
     private var record: WorkRecord? { model.record(key) }
@@ -31,6 +32,7 @@ struct WorkDetailView: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 actions
+                accountActions
                 if let record, record.unreadNewCount > 0, record.inLibrary {
                     Text(record.unreadNewCount == 1 ? "1 new chapter since you last read." : "\(record.unreadNewCount) new chapters since you last read.")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -183,6 +185,60 @@ struct WorkDetailView: View {
             .controlSize(.large)
             .padding(.horizontal, 20)
             .padding(.top, 18)
+        }
+    }
+
+    /// Mark for Later, subscribe and kudos, when the person is signed in to the work's site.
+    @ViewBuilder
+    private var accountActions: some View {
+        if let state = record?.work?.account, model.isSignedIn(key.sourceID),
+           model.manifest(for: key.sourceID)?.has(.account) == true {
+            HStack(spacing: 8) {
+                if let later = state.markedForLater {
+                    accountButton(.markedForLater, on: later,
+                                  title: later ? "Marked for Later" : "Mark for Later",
+                                  icon: later ? "bookmark.fill" : "bookmark")
+                }
+                if let subscribed = state.subscribed {
+                    accountButton(.subscribed, on: subscribed,
+                                  title: subscribed ? "Subscribed" : "Subscribe",
+                                  icon: subscribed ? "bell.fill" : "bell")
+                }
+                let kudos = state.kudos ?? false
+                accountButton(.kudos, on: kudos, title: kudos ? "Kudos left" : "Kudos",
+                              icon: kudos ? "heart.fill" : "heart")
+                    .disabled(kudos)
+            }
+            .controlSize(.small)
+            .padding(.horizontal, 20)
+            .padding(.top, 10)
+        }
+    }
+
+    private func accountButton(_ action: WorkAction, on: Bool, title: String, icon: String) -> some View {
+        Button {
+            Task { await perform(action, !on) }
+        } label: {
+            if busyAction == action {
+                ProgressView().frame(maxWidth: .infinity)
+            } else {
+                Label(title, systemImage: icon).lineLimit(1).minimumScaleFactor(0.8).frame(maxWidth: .infinity)
+            }
+        }
+        .buttonStyle(.bordered)
+        .tint(on ? Color.shelfAccent : nil)
+        .disabled(busyAction != nil)
+        .accessibilityIdentifier("work.account.\(action.rawValue)")
+    }
+
+    private func perform(_ action: WorkAction, _ value: Bool) async {
+        busyAction = action
+        defer { busyAction = nil }
+        do {
+            try await model.setWorkState(key, action, value)
+        } catch {
+            self.error = error.readable
+            if let request = error.verification { verifying = request }
         }
     }
 
