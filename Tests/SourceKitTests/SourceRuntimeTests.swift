@@ -44,7 +44,7 @@ globalThis.source = {
 """#
 
 final class SourceRuntimeTests: XCTestCase {
-    let network = MockNetwork(bodies: [
+    private let network = MockNetwork(bodies: [
         "https://example.org/search?q=tea": #"{"items":[{"id":7,"title":"Tea Shop AU","by":"anon"}]}"#,
         "https://example.org/works/7": #"<h2 class="title">Tea Shop AU</h2><ul class="tags"><li><a>Fluff</a></li><li><a>Coffee</a></li></ul>"#,
     ])
