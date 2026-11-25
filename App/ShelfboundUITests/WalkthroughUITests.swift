@@ -64,8 +64,20 @@ final class WalkthroughUITests: XCTestCase {
         step("Install WeebCentral") { install(matching: "weeb") }
         step("Install AO3") { install(matching: "ao3", or: "archive of our own") }
 
+        // AO3 is rated Explicit, and explicit sources stay hidden until allowed in Settings.
+        step("Settings: allow explicit sources") {
+            app.tabBars.buttons["Settings"].tap()
+            let picker = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Show sources rated up to'")).firstMatch
+            guard picker.waitForExistence(timeout: 10) else { return XCTFail("No content rating setting") }
+            picker.tap()
+            let explicit = app.buttons["Explicit"]
+            if explicit.waitForExistence(timeout: 5) { explicit.tap() } else { XCTFail("No Explicit option") }
+            sleep(1)
+        }
+
         step("Search all sources") {
-            goBack()
+            app.tabBars.buttons["Browse"].tap()
+            popToRoot()
             XCTAssertTrue(app.navigationBars["Browse"].waitForExistence(timeout: 10))
             let search = app.searchFields.firstMatch
             XCTAssertTrue(search.waitForExistence(timeout: 10))
