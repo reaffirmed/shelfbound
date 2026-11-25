@@ -61,8 +61,6 @@ struct BrowseView: View {
                         Button { addingRepo = true } label: { Image(systemName: "plus") }
                             .accessibilityLabel("Add repository")
                     }
-                } else {
-                    ToolbarItem(placement: .primaryAction) { SearchLayoutMenu(layout: $layout) }
                 }
             }
             .sheet(isPresented: $addingRepo) { NavigationStack { AddRepoView() } }
@@ -172,15 +170,20 @@ struct BrowseView: View {
         if searching && results.isEmpty {
             HStack { Spacer(); ProgressView(); Spacer() }
         }
-        if results.count > 1 {
-            Picker("Show", selection: $mergeResults) {
-                Text("Merged").tag(true)
-                Text("By source").tag(false)
+        HStack(spacing: 10) {
+            if results.count > 1 {
+                Picker("Show", selection: $mergeResults) {
+                    Text("Merged").tag(true)
+                    Text("By source").tag(false)
+                }
+                .pickerStyle(.segmented)
+            } else {
+                Spacer()
             }
-            .pickerStyle(.segmented)
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets())
+            SearchLayoutToggle(layout: $layout)
         }
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets())
         if mergeResults && results.count > 1 {
             mergedResults
         } else {
@@ -520,7 +523,9 @@ struct SourceSearchView: View {
             FilterSheet(sourceID: source.id, filters: filters, values: values) { values = $0 }
         }
         .navigationTitle(title ?? source.manifest.name)
-        .toolbar { ToolbarItem(placement: .primaryAction) { SearchLayoutMenu(layout: $layout) } }
+        .toolbar {
+            if filters.isEmpty { ToolbarItem(placement: .primaryAction) { SearchLayoutMenu(layout: $layout) } }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .task { await setUp() }
         .browserVerification($verifying)
@@ -540,6 +545,7 @@ struct SourceSearchView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("filters.all")
+                SearchLayoutToggle(layout: $layout)
                 ForEach(chipFilters) { filter in
                     switch filter.type {
                     case .select, .multi, .toggle: FilterChip(filter: filter, values: $values)

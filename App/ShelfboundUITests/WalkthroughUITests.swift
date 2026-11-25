@@ -387,12 +387,12 @@ final class WalkthroughUITests: XCTestCase {
         for _ in 0..<10 where !(element.exists && element.isHittable) { drag(from: 0.8, to: 0.3) }
     }
 
+    /// Flips search results between the list and covers.
     private func chooseLayout(_ name: String) {
-        let menu = app.buttons["search.layout"]
-        guard menu.waitForExistence(timeout: 5) else { return XCTFail("No results layout button") }
-        menu.tap()
-        let option = app.buttons[name]
-        if option.waitForExistence(timeout: 5) { option.tap() } else { XCTFail("No \(name) layout") }
+        let toggle = app.buttons["search.layout"]
+        guard toggle.waitForExistence(timeout: 5) else { return XCTFail("No results layout button") }
+        toggle.tap()
+        sleep(1)
     }
 
     private func goBack() {

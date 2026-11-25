@@ -373,6 +373,26 @@ struct FilterChipLabel: View {
     }
 }
 
+/// One button beside the results that flips between the list and big covers. It sits in
+/// the results, not the toolbar, because the toolbar hides while the search field is active.
+struct SearchLayoutToggle: View {
+    @Binding var layout: SearchLayout
+
+    var body: some View {
+        Button {
+            layout = layout == .list ? .covers : .list
+        } label: {
+            Image(systemName: layout == .list ? SearchLayout.covers.systemImage : SearchLayout.list.systemImage)
+                .font(.body.weight(.medium))
+                .frame(width: 36, height: 32)
+                .background(Capsule().fill(Color(.tertiarySystemFill)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(layout == .list ? "Show results as covers" : "Show results as a list")
+        .accessibilityIdentifier("search.layout")
+    }
+}
+
 /// How search results show: a list with details, or a grid of big covers like Discover.
 enum SearchLayout: String, CaseIterable, Identifiable {
     case list, covers
@@ -397,7 +417,6 @@ struct SearchLayoutMenu: View {
             Image(systemName: layout.systemImage)
         }
         .accessibilityLabel("Show results as")
-        .accessibilityIdentifier("search.layout")
     }
 }
 
