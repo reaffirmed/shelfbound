@@ -379,6 +379,9 @@ struct SourceSearchView: View {
                 .allowsHitTesting(!reloading)
             }
         }
+        // One background for the list and the chip bar, so they match when the list is empty.
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemGroupedBackground))
         .safeAreaInset(edge: .top, spacing: 0) {
             if !filters.isEmpty && !showingListings { filterBar }
         }
