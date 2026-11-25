@@ -94,8 +94,11 @@ jobs:
                   for a in test.get("attachments", []):
                       src = os.path.join(out, a["exportedFileName"])
                       name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
-                      name = name.split("_0_")[0].replace("/", "-")
+                      name = name.split("_0_")[0]
                       ext = os.path.splitext(a["exportedFileName"])[1]
+                      if name.endswith(ext):
+                          name = name[: -len(ext)]
+                      name = "".join("-" if c in '/\\":<>|*?\r\n' else c for c in name).strip()
                       if os.path.exists(src):
                           os.rename(src, os.path.join(out, name + ext))
           PY
