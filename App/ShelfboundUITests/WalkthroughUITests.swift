@@ -68,7 +68,8 @@ final class WalkthroughUITests: XCTestCase {
         step("Settings: allow explicit sources") {
             app.tabBars.buttons["Settings"].tap()
             let picker = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Show sources rated up to'")).firstMatch
-            guard picker.waitForExistence(timeout: 10) else { return XCTFail("No content rating setting") }
+            for _ in 0..<5 where !(picker.exists && picker.isHittable) { app.swipeUp(); sleep(1) }
+            guard picker.waitForExistence(timeout: 5) else { return XCTFail("No content rating setting") }
             picker.tap()
             let explicit = app.buttons["Explicit"]
             if explicit.waitForExistence(timeout: 5) { explicit.tap() } else { XCTFail("No Explicit option") }
