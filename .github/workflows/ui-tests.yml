@@ -49,8 +49,9 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
 
+      # AO3 often answers GitHub's runners with 429 (too many requests). When it does,
+      # the test still opens AO3 and its filter chips but doesn't fail on AO3 network steps.
       - name: Check that the sites the test uses answer from this runner
-        continue-on-error: true
         run: |
           for url in "https://reaffirmed.github.io/shelfbound-sources/index.json" \
                      "https://weebcentral.com/" \
@@ -58,6 +59,11 @@ jobs:
             curl -sS -o /dev/null -A "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)" --max-time 60 \
               -w "%{http_code} in %{time_total}s  $url\n" "$url" || echo "failed: $url"
           done
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 -A "Mozilla/5.0" \
+            "https://archiveofourown.org/works/search?work_search%5Bquery%5D=coffee+shop" || echo 000)
+          if [ "$code" = 200 ]; then echo "AO3_REACHABLE=1" >> "$GITHUB_ENV"; else
+            echo "::warning::AO3 answered $code from this runner, so AO3 search and reading aren't checked in this run."
+            echo "AO3_REACHABLE=0" >> "$GITHUB_ENV"; fi
 
       - name: Build for testing
         run: |
@@ -81,6 +87,7 @@ jobs:
           sleep 2
           cd App
           status=0
+          export TEST_RUNNER_AO3_REACHABLE="$AO3_REACHABLE"
           xcodebuild test-without-building -project Shelfbound.xcodeproj -scheme Shelfbound \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -derivedDataPath "$RUNNER_TEMP/dd" \

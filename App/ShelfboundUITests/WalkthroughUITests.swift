@@ -100,7 +100,10 @@ final class WalkthroughUITests: XCTestCase {
         }
 
         sourceFlow(name: "WeebCentral", matching: "weeb", query: "solo leveling", prefix: "Manga")
-        sourceFlow(name: "AO3", matching: "ao3", or: "archive", query: "coffee shop", prefix: "Fic")
+        // CI sets AO3_REACHABLE=0 when AO3 refuses the runner (it often sends 429 to cloud
+        // machines). Then AO3's source page and chips are still checked, but not its network steps.
+        let ao3Reachable = ProcessInfo.processInfo.environment["AO3_REACHABLE"] != "0"
+        sourceFlow(name: "AO3", matching: "ao3", or: "archive", query: "coffee shop", prefix: "Fic", network: ao3Reachable)
 
         step("Library after reading") {
             app.tabBars.buttons["Library"].tap()
@@ -110,12 +113,12 @@ final class WalkthroughUITests: XCTestCase {
 
     // MARK: Flows
 
-    private func sourceFlow(name: String, matching: String, or other: String? = nil, query: String, prefix: String) {
+    private func sourceFlow(name: String, matching: String, or other: String? = nil, query: String, prefix: String, network: Bool = true) {
         step("\(name): source search") {
             app.tabBars.buttons["Browse"].tap()
             popToRoot()
             let row = app.buttons.matching(identifier: "browse.source").matching(sourceRow(matching, other)).firstMatch
-            XCTAssertTrue(row.waitForExistence(timeout: 10), "\(name) not in installed sources")
+            XCTAssertTrue(row.waitForExistence(timeout: 20), "\(name) not in installed sources")
             row.tap()
             XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 10))
             sleep(3) // filters load from the source
@@ -133,6 +136,16 @@ final class WalkthroughUITests: XCTestCase {
             let options = app.collectionViews.buttons
             if options.count > 1 { options.element(boundBy: 1).tap() } else { app.tap() }
             sleep(1)
+        }
+
+        guard network else {
+            step("\(name): search (site unreachable from CI, not checked)") {
+                let search = app.searchFields.firstMatch
+                search.tap()
+                search.typeText("\(query)\n")
+                sleep(8)
+            }
+            return
         }
 
         step("\(name): search results") {
@@ -233,6 +246,7 @@ final class WalkthroughUITests: XCTestCase {
 
     private func popToRoot() {
         for _ in 0..<5 where !app.navigationBars["Browse"].exists { goBack() }
+        if app.searchFields.firstMatch.exists, (app.searchFields.firstMatch.value as? String)?.isEmpty == false { endSearch() }
     }
 
     private func closeReader() {
