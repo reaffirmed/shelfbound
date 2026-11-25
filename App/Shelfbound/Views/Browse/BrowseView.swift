@@ -22,6 +22,7 @@ struct BrowseView: View {
     @State private var addingRepo = false
     @State private var path = NavigationPath()
     @AppStorage("browse.mergeResults") private var mergeResults = true
+    @AppStorage(SearchLayout.key) private var layout: SearchLayout = .list
     /// The first lists from each source that has them, for the Discover rows.
     @State private var discover: [DiscoverItem] = []
     @State private var discoverToken = 0
@@ -169,15 +170,20 @@ struct BrowseView: View {
         if searching && results.isEmpty {
             HStack { Spacer(); ProgressView(); Spacer() }
         }
-        if results.count > 1 {
-            Picker("Show", selection: $mergeResults) {
-                Text("Merged").tag(true)
-                Text("By source").tag(false)
+        HStack(spacing: 10) {
+            if results.count > 1 {
+                Picker("Show", selection: $mergeResults) {
+                    Text("Merged").tag(true)
+                    Text("By source").tag(false)
+                }
+                .pickerStyle(.segmented)
+            } else {
+                Spacer()
             }
-            .pickerStyle(.segmented)
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets())
+            SearchLayoutToggle(layout: $layout)
         }
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets())
         if mergeResults && results.count > 1 {
             mergedResults
         } else {
@@ -197,20 +203,28 @@ struct BrowseView: View {
             if merged.isEmpty && !searching {
                 Text("No results").font(.footnote).foregroundStyle(.secondary)
             }
-            ForEach(merged) { result in
-                NavigationLink(value: route(result.primary)) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        WorkCard(work: result.primary.work, format: result.primary.work.format ?? format(of: result.primary.sourceID))
-                        Text(result.others.isEmpty
-                             ? model.sourceName(result.primary.sourceID)
-                             : "\(model.sourceName(result.primary.sourceID)), also on \(result.others.map { model.sourceName($0.sourceID) }.joined(separator: ", "))")
-                            .font(.caption).foregroundStyle(.secondary)
+            if layout == .covers {
+                CoverGrid(items: merged.map { result in
+                    CoverGrid.Item(
+                        route: route(result.primary),
+                        format: result.primary.work.format ?? format(of: result.primary.sourceID),
+                        caption: model.sourceName(result.primary.sourceID),
+                        alternatives: result.others.map { (model.sourceName($0.sourceID), route($0)) })
+                }) { path.append($0) }
+            } else {
+                ForEach(merged) { result in
+                    NavigationLink(value: route(result.primary)) {
+                        WorkCard(
+                            work: result.primary.work, format: result.primary.work.format ?? format(of: result.primary.sourceID),
+                            sourceLine: result.others.isEmpty
+                                ? model.sourceName(result.primary.sourceID)
+                                : "\(model.sourceName(result.primary.sourceID)), also on \(result.others.map { model.sourceName($0.sourceID) }.joined(separator: ", "))")
                     }
-                }
-                .accessibilityIdentifier("work.result")
-                .contextMenu {
-                    ForEach(result.all, id: \.key) { hit in
-                        Button("Open on \(model.sourceName(hit.sourceID))") { path.append(route(hit)) }
+                    .accessibilityIdentifier("work.result")
+                    .contextMenu {
+                        ForEach(result.all, id: \.key) { hit in
+                            Button("Open on \(model.sourceName(hit.sourceID))") { path.append(route(hit)) }
+                        }
                     }
                 }
             }
@@ -255,11 +269,19 @@ struct BrowseView: View {
                 } else if let page = result.page, page.results.isEmpty {
                     Text("No results").font(.footnote).foregroundStyle(.secondary)
                 } else if let page = result.page {
-                    ForEach(page.results.prefix(8)) { work in
-                        NavigationLink(value: WorkRoute(key: WorkKey(sourceID: result.source.id, workID: work.id), summary: work)) {
-                            WorkCard(work: work, format: work.format ?? result.source.manifest.defaultFormat)
+                    if layout == .covers {
+                        CoverGrid(items: page.results.prefix(9).map { work in
+                            CoverGrid.Item(
+                                route: WorkRoute(key: WorkKey(sourceID: result.source.id, workID: work.id), summary: work),
+                                format: work.format ?? result.source.manifest.defaultFormat)
+                        }) { path.append($0) }
+                    } else {
+                        ForEach(page.results.prefix(8)) { work in
+                            NavigationLink(value: WorkRoute(key: WorkKey(sourceID: result.source.id, workID: work.id), summary: work)) {
+                                WorkCard(work: work, format: work.format ?? result.source.manifest.defaultFormat)
+                            }
+                            .accessibilityIdentifier("work.result")
                         }
-                        .accessibilityIdentifier("work.result")
                     }
                     if page.results.count > 8 || page.hasMore {
                         NavigationLink("More from \(result.source.manifest.name)", value: result.source)
@@ -308,13 +330,19 @@ struct BrowseView: View {
 /// A search result card: AO3-style details when the source gives them.
 @MainActor
 struct WorkCard: View {
+    /// Cover width in the list. Tall enough to sit beside the title, byline, tags and
+    /// source line without leaving a gap under it.
+    static let coverWidth: CGFloat = 84
+
     let work: WorkSummary
     let format: WorkFormat
+    /// Which source it's from, shown under the details, as in merged search results.
+    var sourceLine: String? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             if !format.isText || work.coverURL != nil {
-                CoverView(title: work.title, format: format, url: work.coverURL, compact: true).frame(width: 52)
+                CoverView(title: work.title, format: format, url: work.coverURL, compact: true).frame(width: Self.coverWidth)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(work.title).font(.headline).lineLimit(2)
@@ -336,6 +364,9 @@ struct WorkCard: View {
                 ].compactMap { $0 }
                 if !stats.isEmpty {
                     Text(stats.joined(separator: "   ")).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                if let sourceLine {
+                    Text(sourceLine).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
         }
@@ -389,6 +420,9 @@ struct SourceSearchView: View {
     /// The text of the last search that came back, to tell "nothing found" from "not searched yet".
     @State private var searchedText: String?
     @State private var showingFilters = false
+    @AppStorage(SearchLayout.key) private var layout: SearchLayout = .list
+    /// A work tapped in the cover grid.
+    @State private var opened: WorkRoute?
 
     /// Browse lists show until there's something typed or searched.
     private var showingListings: Bool {
@@ -423,11 +457,19 @@ struct SourceSearchView: View {
             } else {
                 if let error { Text(error).foregroundStyle(Color.shelfWarning) }
                 Group {
-                    ForEach(results) { work in
-                        NavigationLink(value: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work)) {
-                            WorkCard(work: work, format: work.format ?? source.manifest.defaultFormat)
+                    if layout == .covers {
+                        CoverGrid(items: results.map { work in
+                            CoverGrid.Item(
+                                route: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work),
+                                format: work.format ?? source.manifest.defaultFormat)
+                        }) { opened = $0 }
+                    } else {
+                        ForEach(results) { work in
+                            NavigationLink(value: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work)) {
+                                WorkCard(work: work, format: work.format ?? source.manifest.defaultFormat)
+                            }
+                            .accessibilityIdentifier("work.result")
                         }
-                        .accessibilityIdentifier("work.result")
                     }
                     if hasMore {
                         Button(loading ? "Loading..." : "Load more") { Task { await run(page: page + 1) } }
@@ -483,6 +525,10 @@ struct SourceSearchView: View {
             FilterSheet(sourceID: source.id, filters: filters, values: values) { values = $0 }
         }
         .navigationTitle(title ?? source.manifest.name)
+        .navigationDestination(item: $opened) { WorkDetailView(route: $0) }
+        .toolbar {
+            if filters.isEmpty { ToolbarItem(placement: .primaryAction) { SearchLayoutMenu(layout: $layout) } }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .task { await setUp() }
         .browserVerification($verifying)
@@ -502,6 +548,7 @@ struct SourceSearchView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("filters.all")
+                SearchLayoutToggle(layout: $layout)
                 ForEach(chipFilters) { filter in
                     switch filter.type {
                     case .select, .multi, .toggle: FilterChip(filter: filter, values: $values)
