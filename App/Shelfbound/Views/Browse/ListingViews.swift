@@ -220,7 +220,7 @@ struct ListingView: View {
         do {
             let result = try await model.listing(sourceID: route.source.id, listingID: route.listing.id, page: next, refresh: refresh)
             if next == 1 {
-                results = result.results
+                results = result.results.uniqued()
             } else {
                 let seen = Set(results.map(\.id))
                 results += result.results.filter { !seen.contains($0.id) }

@@ -205,7 +205,7 @@ struct BrowseView: View {
     @ViewBuilder
     private var mergedResults: some View {
         let merged = SearchMerger.merge(
-            results.compactMap { result in result.page.map { (sourceID: result.source.id, results: $0.results) } },
+            results.compactMap { result in result.page.map { (sourceID: result.source.id, results: $0.results.uniqued()) } },
             preferred: preferredSources)
         Section {
             if merged.isEmpty && !searching {
@@ -280,13 +280,13 @@ struct BrowseView: View {
                     Text("No results").font(.footnote).foregroundStyle(.secondary)
                 } else if let page = result.page {
                     if layout == .covers {
-                        CoverGrid(items: page.results.prefix(9).map { work in
+                        CoverGrid(items: page.results.uniqued().prefix(9).map { work in
                             CoverGrid.Item(
                                 route: WorkRoute(key: WorkKey(sourceID: result.source.id, workID: work.id), summary: work),
                                 format: work.format ?? result.source.manifest.defaultFormat)
                         }) { path.append($0) }
                     } else {
-                        ForEach(page.results.prefix(8)) { work in
+                        ForEach(page.results.uniqued().prefix(8)) { work in
                             NavigationLink(value: WorkRoute(key: WorkKey(sourceID: result.source.id, workID: work.id), summary: work)) {
                                 WorkCard(work: work, format: work.format ?? result.source.manifest.defaultFormat)
                             }
@@ -440,6 +440,26 @@ struct SourceSearchView: View {
     @AppStorage(SearchLayout.key) private var layout: SearchLayout = .list
     /// A work tapped in the cover grid.
     @State private var opened: WorkRoute?
+    /// Genres picked in the grid before searching. They apply together on Search, so
+    /// you can pick several before the results replace the grid.
+    @State private var staged: [String: [String]] = [:]
+
+    /// Nothing typed or searched yet: the genre grid and the browse lists show.
+    private var idle: Bool {
+        query.isEmpty && results.isEmpty && error == nil && !loading && searchedText == nil
+    }
+
+    /// Filters with a fixed list of names, shown as a grid of chips before searching.
+    private var chipGrids: [SearchFilter] {
+        filters.filter { filter in
+            guard let options = filter.options, !options.isEmpty else { return false }
+            return filter.type == .tags || (filter.type == .multi && options.count >= 6)
+        }
+    }
+
+    private var stagedCount: Int {
+        chipGrids.reduce(0) { $0 + (staged[$1.id] ?? []).count + (staged[$1.excludeKey] ?? []).count }
+    }
 
     /// Browse lists show until there's something typed or searched.
     private var showingListings: Bool {
@@ -463,10 +483,21 @@ struct SourceSearchView: View {
     }
 
     /// A new search (a filter changed) while the old results are still on screen.
-    private var reloading: Bool { loading && !results.isEmpty && page == 1 }
+    private var reloading: Bool { loading && !results.isEmpty && loadingPage == 1 }
+    /// The page being fetched, so loading the next page doesn't dim what's already shown.
+    @State private var loadingPage = 1
 
     var body: some View {
         List {
+            if idle && !chipGrids.isEmpty {
+                ForEach(chipGrids) { filter in
+                    Section {
+                        GenreGrid(filter: filter, values: $staged)
+                    } header: {
+                        Text(filter.label)
+                    }
+                }
+            }
             if showingListings {
                 ForEach(listings) { listing in
                     ListingSection(source: source, listing: listing)
@@ -489,10 +520,18 @@ struct SourceSearchView: View {
                         }
                     }
                     if hasMore {
-                        Button(loading ? "Loading..." : "Load more") { Task { await run(page: page + 1) } }
-                            .disabled(loading)
+                        // Scrolling to the end loads the next page. The task restarts when the
+                        // page changes, so it keeps going while this row stays on screen.
+                        HStack { Spacer(); ProgressView(); Spacer() }
+                            .listRowBackground(Color.clear)
+                            .task(id: page) {
+                                if !loading && error == nil { await run(page: page + 1) }
+                            }
                     }
                 }
+                // A fresh view per layout, so switching mid-search never diffs a list
+                // against a grid.
+                .id(layout)
                 .opacity(reloading ? 0.35 : 1)
                 .allowsHitTesting(!reloading)
             }
@@ -502,6 +541,22 @@ struct SourceSearchView: View {
         .background(Color(.systemGroupedBackground))
         .safeAreaInset(edge: .top, spacing: 0) {
             if !filters.isEmpty { filterBar }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if idle && stagedCount > 0 {
+                HStack(spacing: 12) {
+                    Button("Clear") { staged = [:] }
+                        .buttonStyle(.bordered)
+                    Button { applyStaged() } label: {
+                        Text(stagedCount == 1 ? "Search 1 genre" : "Search \(stagedCount) genres").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color.shelfAccent)
+                }
+                .controlSize(.large)
+                .padding(.horizontal, 16).padding(.vertical, 10)
+                .background(.bar)
+            }
         }
         .overlay {
             if !loadedSetup {
@@ -523,7 +578,9 @@ struct SourceSearchView: View {
             }
         }
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always))
-        .onSubmit(of: .search) { Task { await run(page: 1) } }
+        .onSubmit(of: .search) {
+            if stagedCount > 0 { applyStaged() } else { Task { await run(page: 1) } }
+        }
         .onChange(of: query) { _, value in
             if value.isEmpty && !activeFilters {
                 generation += 1
@@ -579,6 +636,21 @@ struct SourceSearchView: View {
         .background(Color(.systemGroupedBackground))
     }
 
+    /// Puts the genres picked in the grid into the filters, which runs the search.
+    private func applyStaged() {
+        var next = values
+        for filter in chipGrids {
+            next[filter.id] = staged[filter.id] ?? []
+            if filter.type == .tags { next[filter.excludeKey] = staged[filter.excludeKey] ?? [] }
+        }
+        staged = [:]
+        searchedText = searchedText ?? ""
+        let changed = next != values
+        values = next
+        // Unchanged filters don't trigger the search on their own.
+        if !changed { Task { await run(page: 1) } }
+    }
+
     private func setUp() async {
         defer { loadedSetup = true }
         guard !loadedSetup, let runtime = try? model.runtime(for: source.id) else { return }
@@ -605,15 +677,20 @@ struct SourceSearchView: View {
         generation += 1
         let mine = generation
         if page == 1 { self.page = 1 }
+        loadingPage = page
         loading = true
         defer { if mine == generation { loading = false } }
         do {
             let result = try await model.runtime(for: source.id).search(query: text, page: page, filters: values)
             guard mine == generation else { return }
-            results = page == 1 ? result.results : results + result.results
+            // Append only works not already shown. Sites repeat works across pages, and a
+            // repeated ID made the list drop rows and could crash switching layouts.
+            var seen = page == 1 ? Set<String>() : Set(results.map(\.id))
+            let fresh = result.results.filter { seen.insert($0.id).inserted }
+            results = page == 1 ? fresh : results + fresh
             searchedText = text
             self.page = page
-            hasMore = result.hasMore
+            hasMore = result.hasMore && !fresh.isEmpty
             error = nil
         } catch {
             guard mine == generation else { return }
@@ -710,5 +787,68 @@ struct InitialsTile: View {
             .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color(hue: hue, saturation: 0.3, brightness: 0.92)))
             .accessibilityHidden(true)
+    }
+}
+
+/// A grid of a filter's names, tapped to pick them before searching. Where the source
+/// can leave names out, a second tap excludes it and a third clears it.
+@MainActor
+struct GenreGrid: View {
+    let filter: SearchFilter
+    @Binding var values: [String: [String]]
+
+    private var included: [String] { values[filter.id] ?? [] }
+    private var excluded: [String] { values[filter.excludeKey] ?? [] }
+
+    var body: some View {
+        FlowLayout(spacing: 8) {
+            ForEach(filter.options ?? []) { option in
+                Button { cycle(option.id) } label: { chip(option) }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("genre.chip")
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func chip(_ option: SearchFilter.Option) -> some View {
+        let on = included.contains(option.id)
+        let off = excluded.contains(option.id)
+        return HStack(spacing: 4) {
+            if on { Image(systemName: "checkmark") }
+            if off { Image(systemName: "minus") }
+            Text(option.label).strikethrough(off)
+        }
+        .font(.subheadline.weight(.medium))
+        .lineLimit(1)
+        .fixedSize()
+        .foregroundStyle(on || off ? Color.white : Color.primary)
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(on ? Color.shelfAccent : off ? Color.red.opacity(0.8) : Color(.tertiarySystemFill)))
+        .accessibilityLabel(on ? "\(option.label), included" : off ? "\(option.label), excluded" : option.label)
+    }
+
+    private func cycle(_ id: String) {
+        var inc = included
+        var exc = excluded
+        if let i = inc.firstIndex(of: id) {
+            inc.remove(at: i)
+            if filter.type == .tags && filter.excludable == true { exc.append(id) }
+        } else if let i = exc.firstIndex(of: id) {
+            exc.remove(at: i)
+        } else {
+            inc.append(id)
+        }
+        values[filter.id] = inc
+        values[filter.excludeKey] = exc.isEmpty ? nil : exc
+    }
+}
+
+extension Array where Element == WorkSummary {
+    /// The first of each ID. A list or grid with a repeated ID drops rows or crashes.
+    func uniqued() -> [WorkSummary] {
+        var seen = Set<String>()
+        return filter { seen.insert($0.id).inserted }
     }
 }

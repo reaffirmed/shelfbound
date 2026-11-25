@@ -33,7 +33,7 @@ struct UnhandledLink: Error, LocalizedError {
 @Observable
 final class AppModel {
     static let shared = AppModel()
-    nonisolated static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.1"
+    nonisolated static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.2"
 
     private(set) var repos: [SavedRepo] = []
     private(set) var installed: [InstalledSource] = []
