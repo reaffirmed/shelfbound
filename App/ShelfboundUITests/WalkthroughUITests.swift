@@ -227,8 +227,17 @@ final class WalkthroughUITests: XCTestCase {
             let multi = app.buttons.matching(identifier: "filter.chip")
                 .matching(NSPredicate(format: "label CONTAINS[c] 'warning' OR label CONTAINS[c] 'genre' OR label CONTAINS[c] 'type'")).firstMatch
             guard multi.exists else { return }
-            if !multi.isHittable { app.scrollViews.firstMatch.swipeLeft() }
-            multi.tap()
+            // The chip can sit past the right edge of the chip bar; drag the bar until it's on screen.
+            let width = app.windows.firstMatch.frame.width
+            for _ in 0..<5 where multi.frame.maxX > width - 8 {
+                let y = multi.frame.midY / app.windows.firstMatch.frame.height
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: y))
+                    .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: y)))
+                sleep(1)
+            }
+            let frame = multi.frame
+            app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: frame.midX, dy: frame.midY)).tap()
             sleep(1)
             let options = app.collectionViews.buttons
             if options.count > 0 { options.element(boundBy: 0).tap() }
