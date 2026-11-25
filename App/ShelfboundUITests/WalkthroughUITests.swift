@@ -209,6 +209,21 @@ final class WalkthroughUITests: XCTestCase {
             }
         }
 
+        step("\(name): all filters screen") {
+            let all = app.buttons["filters.all"]
+            guard all.waitForExistence(timeout: 5) else { return XCTFail("\(name) has no Filters button") }
+            all.tap()
+            XCTAssertTrue(app.buttons["filters.apply"].waitForExistence(timeout: 5), "Filters screen didn't open")
+            sleep(1)
+        }
+
+        step("\(name): all filters screen scrolled") {
+            app.swipeUp()
+            sleep(1)
+            app.buttons["Cancel"].firstMatch.tap()
+            sleep(1)
+        }
+
         // A multi-select filter usually narrows the results to nothing, so it comes last.
         guard network else { return multiSelectSteps(name) }
 
@@ -241,6 +256,20 @@ final class WalkthroughUITests: XCTestCase {
             app.swipeUp()
             sleep(3)
             closeReader()
+        }
+
+        step("\(name): tapping a tag searches for it") {
+            let tag = app.buttons.matching(identifier: "work.tag").firstMatch
+            for _ in 0..<3 {
+                if tag.exists && tag.isHittable { break }
+                app.swipeUp()
+            }
+            guard tag.exists && tag.isHittable else { return }
+            tag.tap()
+            XCTAssertTrue(firstResult().waitForExistence(timeout: 45), "No \(name) results for a tapped tag")
+            sleep(2)
+            goBack()
+            sleep(1)
         }
         multiSelectSteps(name)
     }

@@ -20,6 +20,40 @@ final class ShelfCoreTests: XCTestCase {
         XCTAssertEqual(work.account, WorkAccountState(markedForLater: true, subscribed: false, kudos: nil))
     }
 
+    func testNewFilterKindsAndTagSearch() throws {
+        let json = #"""
+        [{"id":"sort","label":"Sort","type":"select","options":[{"id":"a","label":"A"}],"default":["a"]},
+         {"id":"fandom","label":"Fandoms","type":"tags","excludable":true,"suggests":true,"workField":"fandoms"},
+         {"id":"genre","label":"Genres","type":"tags","options":[{"id":"Action","label":"Action"}],"workField":"tags"},
+         {"id":"rating","label":"Rating","type":"select","options":[{"id":"","label":"Any"},{"id":"13","label":"Explicit"}],"workField":"rating"},
+         {"id":"words","label":"Words","type":"range","placeholder":"words"},
+         {"id":"future","label":"Later","type":"hologram"}]
+        """#
+        let filters = try JSONDecoder().decode(LossyArray<SearchFilter>.self, from: Data(json.utf8)).elements
+        // A kind this version doesn't know is dropped, not fatal.
+        XCTAssertEqual(filters.map(\.id), ["sort", "fandom", "genre", "rating", "words"])
+        XCTAssertEqual(filters[1].type, .tags)
+        XCTAssertEqual(filters[1].excludable, true)
+        XCTAssertEqual(filters[4].placeholder, "words")
+
+        XCTAssertFalse(filters[0].isActive(in: ["sort": ["a"]]))
+        XCTAssertTrue(filters[0].isActive(in: ["sort": ["b"]]))
+        XCTAssertFalse(filters[4].isActive(in: ["words": ["", ""]]))
+        XCTAssertTrue(filters[4].isActive(in: ["words": ["1000", ""]]))
+        XCTAssertTrue(filters[1].isActive(in: ["fandom.exclude": ["X"]]))
+
+        let fandom = TagSearch.values(for: "Naruto", field: "fandoms", in: filters)
+        XCTAssertEqual(fandom?["fandom"], ["Naruto"])
+        XCTAssertEqual(fandom?["sort"], ["a"])
+        XCTAssertEqual(TagSearch.values(for: "Naruto", field: "fandoms", in: filters, exclude: true)?["fandom.exclude"], ["Naruto"])
+        XCTAssertEqual(TagSearch.values(for: "action", field: "tags", in: filters)?["genre"], ["Action"])
+        // Not excludable, so no "without" search.
+        XCTAssertNil(TagSearch.values(for: "Action", field: "tags", in: filters, exclude: true))
+        XCTAssertEqual(TagSearch.values(for: "Explicit", field: "rating", in: filters)?["rating"], ["13"])
+        XCTAssertNil(TagSearch.values(for: "Weird", field: "rating", in: filters))
+        XCTAssertNil(TagSearch.values(for: "Hinata", field: "characters", in: filters))
+    }
+
     func testDomainPolicy() {
         let policy = DomainPolicy(patterns: ["example.org", "*.cdn.example.net"])
         XCTAssertTrue(policy.allows(URL(string: "https://example.org/works/1")!))

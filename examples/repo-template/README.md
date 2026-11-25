@@ -42,7 +42,8 @@ Publish `dist/` and give people the URL of the folder. The app pins your public 
 | `getWork(id)` | `{ id, title, authors, coverURL?, summaryHTML?, url?, format?, rating?, warnings?, categories?, fandoms?, relationships?, characters?, tags?, language?, wordCount?, chapterCount?, status?, kudos?, bookmarks?, hits?, publishedAt?, updatedAt?, series?: [{ title, part?, id?, url? }], originalLanguage?, translators?, releaseGroup?, downloads? }` |
 | `getChapters(id)` | `[{ id, title, number?, publishedAt?, group?, link? }]`, oldest first. `group` is the scanlation or translation group; `link` is where the chapter lives if it's on another site |
 | `getChapterContent(id, chapterId)` | `{ type: "text", html, notesBefore?, notesAfter? }`, `{ type: "images", pages: [url or { url, headers }] }`, or `{ type: "link", url }` |
-| `getFilters()` | Optional. `[{ id, label, type: "select" | "multi" | "toggle", options?: [{ id, label }], default?: [id] }]`. `search` then gets `filters` as `{ id: [selected option ids] }`; a toggle that's on is `["true"]` |
+| `getFilters()` | Optional. `[{ id, label, type, options?: [{ id, label }], default?: [id], placeholder?, excludable?, suggests?, group?, workField? }]`. See "Search filters" below |
+| `suggest(filterID, text)` | Optional. Names for a `tags` filter with `suggests: true` that match what the person typed: `[{ id, label }]` |
 | `getListings()` | Optional, with the `listings` capability. `[{ id, title, subtitle? }]`: lists people can browse without searching, like "Freshly updated", "Trending" or "Best of all time". The first one shows on the Browse tab |
 | `getListing(id, page)` | Optional, with the `listings` capability. One page of a list from `getListings`, shaped like `search`'s result: `{ results, hasMore }` |
 | `idFromURL(url)` | Optional. The work ID for a link to a work on your site, or `null`. Lets people import a list of links (AO3 bookmarks, a reading list) |
@@ -86,3 +87,29 @@ Sources don't need to do anything for this. Don't add challenge solvers, CAPTCHA
 ## Be a good guest
 
 Only add sources for sites whose terms allow it, and respect their rate limits, login and adult-content gates. Repos that point at pirated content can be blocked from the app.
+
+## Search filters
+
+`search(query, page, filters)` gets `filters` as `{ [id]: [String] }`. The query can be
+empty when the person searches by filters alone.
+
+| `type` | What the person sees | Value |
+|---|---|---|
+| `select` | A menu with one choice | `[optionID]` |
+| `multi` | A menu with several choices | `[optionID, ...]` |
+| `toggle` | An on/off chip | `["true"]` or `[]` |
+| `text` | A text field | `[text]` |
+| `range` | Min and max number fields. `placeholder` is the unit, like "words" | `[min, max]`, either may be `""` |
+| `tags` | Names to include, and with `excludable: true` names to leave out, which arrive under `"<id>.exclude"`. Suggestions come from `options`, or from `suggest()` when `suggests: true` | `[name, ...]` |
+
+`group` puts filters under a heading on the Filters screen. `workField` names the work
+field the filter searches by (`fandoms`, `relationships`, `characters`, `tags`,
+`warnings`, `categories`, `rating` or `language`): tapping one of those tags on a work's
+page then opens a search for it, and holding it offers a search without it.
+
+Apps before 0.4 only know `select`, `multi` and `toggle`. Check `host.filterTypes`
+before offering the others:
+
+```js
+const newKinds = (host.filterTypes || []).includes("tags");
+```

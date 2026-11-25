@@ -167,5 +167,28 @@ final class SourceRuntimeTests: XCTestCase {
         let kudos = try await runtime.setWorkState(workID: "7", action: .kudos, value: true)
         XCTAssertEqual(kudos.kudos, true)
     }
+
+    func testFilterTypesAndSuggest() async throws {
+        let script = fullSource.replacingOccurrences(of: "globalThis.source = {", with: #"""
+        globalThis.source = {
+          async getFilters() {
+            const out = [{ id: "sort", label: "Sort", type: "select", options: [{ id: "a", label: "A" }] }];
+            if ((host.filterTypes || []).includes("tags")) out.push({ id: "tag", label: "Tags", type: "tags", suggests: true });
+            out.push({ id: "odd", label: "Odd", type: "unknown-kind" });
+            return out;
+          },
+          async suggest(filterID, text) { return [{ id: text + "!", label: filterID + ":" + text }, { nope: 1 }]; },
+        """#)
+        let runtime = try SourceRuntime(package: package(script), network: network)
+        let filters = try await runtime.getFilters()
+        XCTAssertEqual(filters.map(\.id), ["sort", "tag"])
+        let found = try await runtime.suggest(filterID: "tag", text: "fl")
+        XCTAssertEqual(found, [SearchFilter.Option(id: "fl!", label: "tag:fl")])
+
+        let plain = try SourceRuntime(package: package(fullSource), network: network)
+        let none = try await plain.suggest(filterID: "tag", text: "x")
+        XCTAssertTrue(none.isEmpty)
+    }
+    }
 }
 #endif

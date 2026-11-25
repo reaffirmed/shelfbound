@@ -1,5 +1,6 @@
 import DownloadKit
 import LibraryKit
+import RepoKit
 import ShelfCore
 import SwiftUI
 
@@ -23,6 +24,9 @@ struct WorkDetailView: View {
     @State private var showingTranslation = false
     @State private var translatingSummary = false
     @State private var busyAction: WorkAction?
+    /// The source's search filters, so tags it can search by become links.
+    @State private var searchFilters: [SearchFilter] = []
+    @State private var tagSearch: TagSearchRoute?
 
     private var key: WorkKey { route.key }
     private var record: WorkRecord? { model.record(key) }
@@ -58,9 +62,14 @@ struct WorkDetailView: View {
         .refreshable { await load() }
         .task {
             model.ensureRecord(key, summary: route.summary)
+            async let filters: Void = loadFilters()
             await load()
+            await filters
         }
         .fullScreenCover(item: $reading) { ReaderView(request: $0) }
+        .navigationDestination(item: $tagSearch) {
+            SourceSearchView(source: $0.source, initialValues: $0.values, title: $0.title)
+        }
         .browserVerification($verifying)
         .sheet(isPresented: $showingStyle) {
             ReaderStyleSheet(key: key).presentationDetents([.medium, .large])
@@ -391,15 +400,15 @@ struct WorkDetailView: View {
     @ViewBuilder
     private var tags: some View {
         if let work = record?.work {
-            let allRows: [(String, [String], ChipStyle)] = [
-                ("Rating", work.rating.map { [$0] } ?? [], .rating),
-                ("Warnings", work.warnings ?? [], .warning),
-                ("Category", work.categories ?? [], .category),
-                ("Fandom", work.fandoms ?? [], .plain),
-                ("Relationships", work.relationships ?? [], .ship),
-                ("Characters", work.characters ?? [], .plain),
-                ("Additional", work.tags ?? [], .free),
-                ("Language", work.language.map { [$0] } ?? [], .outline),
+            let allRows: [(String, [String], ChipStyle, String)] = [
+                ("Rating", work.rating.map { [$0] } ?? [], .rating, "rating"),
+                ("Warnings", work.warnings ?? [], .warning, "warnings"),
+                ("Category", work.categories ?? [], .category, "categories"),
+                ("Fandom", work.fandoms ?? [], .plain, "fandoms"),
+                ("Relationships", work.relationships ?? [], .ship, "relationships"),
+                ("Characters", work.characters ?? [], .plain, "characters"),
+                ("Additional", work.tags ?? [], .free, "tags"),
+                ("Language", work.language.map { [$0] } ?? [], .outline, "language"),
             ]
             let rows = allRows.filter { !$0.1.isEmpty }
             if !rows.isEmpty {
@@ -409,7 +418,7 @@ struct WorkDetailView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(row.0).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                             FlowLayout(spacing: 6) {
-                                ForEach(row.1, id: \.self) { Chip(text: $0, style: row.2) }
+                                ForEach(row.1, id: \.self) { tagChip($0, style: row.2, field: row.3) }
                             }
                         }
                     }
@@ -417,6 +426,40 @@ struct WorkDetailView: View {
                 .padding(.horizontal, 20)
             }
         }
+    }
+
+    /// A tag the source can search by opens that search; holding it offers to search
+    /// without it instead. Other tags are plain chips.
+    @ViewBuilder
+    private func tagChip(_ tag: String, style: ChipStyle, field: String) -> some View {
+        let source = model.installed.first { $0.id == key.sourceID }
+        if let source, let values = TagSearch.values(for: tag, field: field, in: searchFilters) {
+            let without = TagSearch.values(for: tag, field: field, in: searchFilters, exclude: true)
+            Button { tagSearch = TagSearchRoute(source: source, values: values, title: tag) } label: {
+                Chip(text: tag, style: style)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("work.tag")
+            .accessibilityHint("Searches \(source.manifest.name) for this tag")
+            .contextMenu {
+                Button { tagSearch = TagSearchRoute(source: source, values: values, title: tag) } label: {
+                    Label("Search for \(tag)", systemImage: "magnifyingglass")
+                }
+                if let without {
+                    Button { tagSearch = TagSearchRoute(source: source, values: without, title: "Without \(tag)") } label: {
+                        Label("Search without \(tag)", systemImage: "minus.circle")
+                    }
+                }
+                Button { UIPasteboard.general.string = tag } label: { Label("Copy", systemImage: "doc.on.doc") }
+            }
+        } else {
+            Chip(text: tag, style: style)
+        }
+    }
+
+    private func loadFilters() async {
+        guard searchFilters.isEmpty, let runtime = try? model.runtime(for: key.sourceID) else { return }
+        searchFilters = (try? await runtime.getFilters()) ?? []
     }
 
     @ViewBuilder
