@@ -180,24 +180,9 @@ final class WalkthroughUITests: XCTestCase {
             }
         }
 
-        step("\(name): multi-select menu after one tap") {
-            let multi = app.buttons.matching(identifier: "filter.chip")
-                .matching(NSPredicate(format: "label CONTAINS[c] 'warning' OR label CONTAINS[c] 'genre' OR label CONTAINS[c] 'type'")).firstMatch
-            guard multi.exists else { return }
-            if !multi.isHittable { app.scrollViews.firstMatch.swipeLeft() }
-            multi.tap()
-            sleep(1)
-            let options = app.collectionViews.buttons
-            if options.count > 0 { options.element(boundBy: 0).tap() }
-            sleep(1) // the screenshot shows whether the menu stayed open
-        }
+        // A multi-select filter usually narrows the results to nothing, so it comes last.
+        guard network else { return multiSelectSteps(name) }
 
-        step("\(name): multi-select menu closed") {
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap()
-            sleep(3)
-        }
-
-        guard network else { return }
 
         step("\(name): series page") {
             firstResult().tap()
@@ -227,6 +212,28 @@ final class WalkthroughUITests: XCTestCase {
             app.swipeUp()
             sleep(3)
             closeReader()
+        }
+        multiSelectSteps(name)
+    }
+
+    private func multiSelectSteps(_ name: String) {
+        step("\(name): multi-select menu after one tap") {
+            // Back from the series page to the results, where the chips are.
+            if !app.buttons.matching(identifier: "filter.chip").firstMatch.waitForExistence(timeout: 2) { goBack() }
+            let multi = app.buttons.matching(identifier: "filter.chip")
+                .matching(NSPredicate(format: "label CONTAINS[c] 'warning' OR label CONTAINS[c] 'genre' OR label CONTAINS[c] 'type'")).firstMatch
+            guard multi.exists else { return }
+            if !multi.isHittable { app.scrollViews.firstMatch.swipeLeft() }
+            multi.tap()
+            sleep(1)
+            let options = app.collectionViews.buttons
+            if options.count > 0 { options.element(boundBy: 0).tap() }
+            sleep(1) // the screenshot shows whether the menu stayed open
+        }
+
+        step("\(name): multi-select menu closed") {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap()
+            sleep(3)
         }
     }
 
