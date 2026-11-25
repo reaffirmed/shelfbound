@@ -14,6 +14,9 @@ struct BrowseView: View {
     @State private var addingRepo = false
     @State private var path = NavigationPath()
     @AppStorage("browse.mergeResults") private var mergeResults = true
+    /// The first lists from each source that has them, for the Discover rows.
+    @State private var discover: [DiscoverItem] = []
+    @State private var discoverToken = 0
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -21,6 +24,9 @@ struct BrowseView: View {
                 if !results.isEmpty || searching {
                     searchResults
                 } else {
+                    ForEach(discover) { item in
+                        ListingSection(source: item.source, listing: item.listing, showSourceName: true, refreshToken: discoverToken)
+                    }
                     sources
                     repositories
                 }
@@ -39,12 +45,29 @@ struct BrowseView: View {
                 }
             }
             .sheet(isPresented: $addingRepo) { NavigationStack { AddRepoView() } }
-            .refreshable { await model.refreshRepos() }
+            .refreshable {
+                await model.refreshRepos()
+                discoverToken += 1
+            }
             .task { await model.refreshRepos() }
+            .task(id: model.searchableSources.map(\.id)) { await loadDiscover() }
             .navigationDestination(for: InstalledSource.self) { SourceSearchView(source: $0) }
             .navigationDestination(for: SavedRepo.self) { RepoDetailView(repo: $0) }
             .navigationDestination(for: WorkRoute.self) { WorkDetailView(route: $0) }
+            .navigationDestination(for: ListingRoute.self) { ListingView(route: $0) }
         }
+    }
+
+    /// Two lists from each source that has them, in the order the sources are listed.
+    private func loadDiscover() async {
+        var items: [DiscoverItem] = []
+        for source in model.searchableSources where source.manifest.has(.listings) {
+            guard let runtime = try? model.runtime(for: source.id),
+                  let listings = try? await runtime.getListings() else { continue }
+            items += listings.prefix(2).map { DiscoverItem(source: source, listing: $0) }
+        }
+        guard !Task.isCancelled else { return }
+        discover = items
     }
 
     @ViewBuilder
@@ -293,7 +316,14 @@ struct WorkCard: View {
     }
 }
 
-/// Search one source, with its filters as chips.
+struct DiscoverItem: Identifiable {
+    let source: InstalledSource
+    let listing: SourceListing
+    var id: String { source.id + "/" + listing.id }
+}
+
+/// Search one source, with its filters as chips. Before you search, it shows the
+/// source's browse lists ("Freshly updated", "Trending"...) when it has them.
 @MainActor
 struct SourceSearchView: View {
     @Environment(AppModel.self) private var model
@@ -308,68 +338,119 @@ struct SourceSearchView: View {
     @State private var verifying: VerificationRequest?
     @State private var filters: [SearchFilter] = []
     @State private var values: [String: [String]] = [:]
+    @State private var listings: [SourceListing] = []
+    @State private var loadedSetup = false
+    /// Bumped by every search, so an older search that finishes late can't replace newer results.
+    @State private var generation = 0
+
+    /// Browse lists show until there's something typed or searched.
+    private var showingListings: Bool {
+        !listings.isEmpty && query.isEmpty && results.isEmpty && error == nil && !loading
+    }
+
+    /// A new search (a filter changed) while the old results are still on screen.
+    private var reloading: Bool { loading && !results.isEmpty && page == 1 }
 
     var body: some View {
         List {
-            if !filters.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(filters) { filter in FilterChip(filter: filter, values: $values) }
+            if showingListings {
+                ForEach(listings) { listing in
+                    ListingSection(source: source, listing: listing)
+                }
+            } else {
+                if let error { Text(error).foregroundStyle(Color.shelfWarning) }
+                Group {
+                    ForEach(results) { work in
+                        NavigationLink(value: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work)) {
+                            WorkCard(work: work, format: work.format ?? source.manifest.defaultFormat)
+                        }
                     }
-                    .padding(.horizontal, 16)
+                    if hasMore {
+                        Button(loading ? "Loading..." : "Load more") { Task { await run(page: page + 1) } }
+                            .disabled(loading)
+                    }
                 }
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
-                .onChange(of: values) { _, _ in if !query.isEmpty { Task { await run(page: 1) } } }
-            }
-            if let error { Text(error).foregroundStyle(Color.shelfWarning) }
-            ForEach(results) { work in
-                NavigationLink(value: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work)) {
-                    WorkCard(work: work, format: work.format ?? source.manifest.defaultFormat)
-                }
-            }
-            if hasMore {
-                Button(loading ? "Loading..." : "Load more") { Task { await run(page: page + 1) } }
-                    .disabled(loading)
+                .opacity(reloading ? 0.35 : 1)
+                .allowsHitTesting(!reloading)
             }
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !filters.isEmpty && !showingListings { filterBar }
+        }
         .overlay {
-            if results.isEmpty && !loading && error == nil {
-                ContentUnavailableView("Search \(source.manifest.name)", systemImage: "magnifyingglass")
-            } else if loading && results.isEmpty {
+            if !loadedSetup {
+                EmptyView()
+            } else if loading && (results.isEmpty || reloading) {
                 ProgressView()
+                    .controlSize(.large)
+                    .padding(18)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            } else if results.isEmpty && error == nil && !showingListings {
+                ContentUnavailableView(
+                    "Search \(source.manifest.name)", systemImage: "magnifyingglass",
+                    description: listings.isEmpty ? nil : Text("Clear the search to see what's new."))
             }
         }
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always))
         .onSubmit(of: .search) { Task { await run(page: 1) } }
+        .onChange(of: query) { _, value in
+            if value.isEmpty {
+                generation += 1
+                results = []
+                error = nil
+                hasMore = false
+                loading = false
+            }
+        }
+        .onChange(of: values) { _, _ in if !query.isEmpty { Task { await run(page: 1) } } }
         .navigationTitle(source.manifest.name)
         .navigationBarTitleDisplayMode(.inline)
-        .task { await loadFilters() }
+        .task { await setUp() }
         .browserVerification($verifying)
         .onChange(of: model.verifiedCount) { _, _ in
             if error != nil, !query.isEmpty { Task { await run(page: 1) } }
         }
     }
 
-    private func loadFilters() async {
-        guard filters.isEmpty, let runtime = try? model.runtime(for: source.id) else { return }
+    /// The chips sit under the search field and stay put while results scroll.
+    private var filterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(filters) { filter in FilterChip(filter: filter, values: $values) }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+        }
+        .background(Color(.systemGroupedBackground))
+    }
+
+    private func setUp() async {
+        defer { loadedSetup = true }
+        guard !loadedSetup, let runtime = try? model.runtime(for: source.id) else { return }
         filters = (try? await runtime.getFilters()) ?? []
         for filter in filters where values[filter.id] == nil {
             values[filter.id] = filter.defaultValue ?? []
         }
+        listings = (try? await runtime.getListings()) ?? []
     }
 
     private func run(page: Int) async {
-        guard !query.isEmpty else { return }
+        let text = query.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return }
+        generation += 1
+        let mine = generation
+        if page == 1 { self.page = 1 }
         loading = true
-        defer { loading = false }
+        defer { if mine == generation { loading = false } }
         do {
-            let result = try await model.runtime(for: source.id).search(query: query, page: page, filters: values)
+            let result = try await model.runtime(for: source.id).search(query: text, page: page, filters: values)
+            guard mine == generation else { return }
             results = page == 1 ? result.results : results + result.results
             self.page = page
             hasMore = result.hasMore
             error = nil
         } catch {
+            guard mine == generation else { return }
             self.error = error.readable
             if let request = error.verification { verifying = request }
         }
@@ -399,6 +480,7 @@ struct FilterChip: View {
             } label: {
                 chip(label(for: selected.first), on: !selected.isEmpty && selected != (filter.defaultValue ?? []))
             }
+            .animation(nil, value: selected)
         case .multi:
             Menu {
                 ForEach(filter.options ?? []) { option in
@@ -409,10 +491,17 @@ struct FilterChip: View {
                     } label: {
                         if selected.contains(option.id) { Label(option.label, systemImage: "checkmark") } else { Text(option.label) }
                     }
+                    // Pick several without the menu closing after each one.
+                    .menuActionDismissBehavior(.disabled)
+                }
+                if !selected.isEmpty {
+                    Divider()
+                    Button("Clear", role: .destructive) { values[filter.id] = [] }
                 }
             } label: {
-                chip(selected.isEmpty ? filter.label : "\(filter.label): \(selected.count)", on: !selected.isEmpty)
+                chip(selected.isEmpty ? filter.label : "\(filter.label) · \(selected.count)", on: !selected.isEmpty)
             }
+            .animation(nil, value: selected)
         }
     }
 
@@ -421,11 +510,17 @@ struct FilterChip: View {
         return "\(filter.label): \(option.label)"
     }
 
+    /// The same weight on and off, and no animation when the text changes: a new value
+    /// replaces the old one at once instead of the chip sliding to its new width.
     private func chip(_ text: String, on: Bool) -> some View {
         Text(text)
-            .font(.subheadline.weight(on ? .semibold : .regular))
+            .font(.subheadline.weight(.medium))
+            .lineLimit(1)
+            .fixedSize()
+            .contentTransition(.identity)
             .foregroundStyle(on ? Color.white : Color.primary)
             .padding(.horizontal, 12).padding(.vertical, 7)
             .background(Capsule().fill(on ? Color.shelfAccent : Color(.tertiarySystemFill)))
+            .transaction { $0.animation = nil }
     }
 }

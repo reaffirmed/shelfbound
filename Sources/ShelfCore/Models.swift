@@ -39,7 +39,8 @@ public struct SourceManifest: Codable, Sendable, Hashable, Identifiable {
     /// Slower spacing than the app's default of one request a second, for sites that ask for it.
     public var rateLimit: RateLimit?
     /// Optional features: "filters" (`getFilters`), "links" (`resolveLink`, reads chapter
-    /// links other sources hand over), "discovery" (chapters are links to other sites).
+    /// links other sources hand over), "discovery" (chapters are links to other sites),
+    /// "listings" (`getListings` and `getListing`, browsable lists like "Trending").
     public var capabilities: [String]?
 
     public init(
@@ -69,7 +70,7 @@ public struct SourceManifest: Codable, Sendable, Hashable, Identifiable {
 }
 
 public enum SourceCapability: String, Sendable {
-    case filters, links, discovery
+    case filters, links, discovery, listings
 }
 
 public struct RateLimit: Codable, Sendable, Hashable {
@@ -393,6 +394,21 @@ public struct SearchPage: Codable, Sendable, Hashable {
     public init(results: [WorkSummary], hasMore: Bool) {
         self.results = results
         self.hasMore = hasMore
+    }
+}
+
+/// A browsable list a source offers through `getListings()`, such as "Freshly updated"
+/// or "Best of all time". Its works come from `getListing(id, page)`.
+public struct SourceListing: Codable, Sendable, Hashable, Identifiable {
+    public var id: String
+    public var title: String
+    /// A short line under the title, like "Most kudos this week".
+    public var subtitle: String?
+
+    public init(id: String, title: String, subtitle: String? = nil) {
+        self.id = id
+        self.title = title
+        self.subtitle = subtitle
     }
 }
 

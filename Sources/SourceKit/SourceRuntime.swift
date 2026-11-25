@@ -80,6 +80,18 @@ public final class SourceRuntime: @unchecked Sendable {
         return try await invoke("getFilters", [])
     }
 
+    /// Browsable lists from the optional `getListings()`. Empty when the source has none.
+    public func getListings() async throws -> [SourceListing] {
+        guard implements("getListings"), implements("getListing") else { return [] }
+        return try await invoke("getListings", [])
+    }
+
+    /// One page of a list from `getListings()`.
+    public func getListing(id: String, page: Int = 1) async throws -> SearchPage {
+        guard implements("getListing") else { throw SourceError.missingFunction("getListing") }
+        return try await invoke("getListing", [id, page])
+    }
+
     /// Reads a chapter link another source handed over. Needs the "links" capability.
     public func resolveLink(_ url: URL) async throws -> ChapterContent {
         guard implements("resolveLink") else { throw SourceError.missingFunction("resolveLink") }
@@ -244,7 +256,7 @@ public final class SourceRuntime: @unchecked Sendable {
                 throw SourceError.missingFunction(name)
             }
         }
-        for name in ["getFilters", "resolveLink", "getLatest", "idFromURL"] {
+        for name in ["getFilters", "getListings", "getListing", "resolveLink", "getLatest", "idFromURL"] {
             if let fn = source.objectForKeyedSubscript(name), !fn.isUndefined, !fn.isNull {
                 optionalFunctions.insert(name)
             }

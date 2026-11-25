@@ -31,7 +31,7 @@ Publish `dist/` and give people the URL of the folder. The app pins your public 
 | `contentRating` | `safe`, `mature` or `explicit`. People choose the highest rating they see in Settings |
 | `languages`, `domains` | Languages, and every host the source contacts. `*.example.org` allows subdomains |
 | `rateLimit` | Optional. `{ "minIntervalMs": 3000 }` spaces requests further apart than the default one second |
-| `capabilities` | Optional. `filters` (has `getFilters`), `links` (has `resolveLink`), `discovery` (chapters live on other sites) |
+| `capabilities` | Optional. `filters` (has `getFilters`), `links` (has `resolveLink`), `listings` (has `getListings` and `getListing`), `discovery` (chapters live on other sites) |
 
 `main.js` sets `globalThis.source` to an object with these async functions:
 
@@ -42,6 +42,8 @@ Publish `dist/` and give people the URL of the folder. The app pins your public 
 | `getChapters(id)` | `[{ id, title, number?, publishedAt?, group?, link? }]`, oldest first. `group` is the scanlation or translation group; `link` is where the chapter lives if it's on another site |
 | `getChapterContent(id, chapterId)` | `{ type: "text", html, notesBefore?, notesAfter? }`, `{ type: "images", pages: [url or { url, headers }] }`, or `{ type: "link", url }` |
 | `getFilters()` | Optional. `[{ id, label, type: "select" | "multi" | "toggle", options?: [{ id, label }], default?: [id] }]`. `search` then gets `filters` as `{ id: [selected option ids] }`; a toggle that's on is `["true"]` |
+| `getListings()` | Optional, with the `listings` capability. `[{ id, title, subtitle? }]`: lists people can browse without searching, like "Freshly updated", "Trending" or "Best of all time". The first one shows on the Browse tab |
+| `getListing(id, page)` | Optional, with the `listings` capability. One page of a list from `getListings`, shaped like `search`'s result: `{ results, hasMore }` |
 | `idFromURL(url)` | Optional. The work ID for a link to a work on your site, or `null`. Lets people import a list of links (AO3 bookmarks, a reading list) |
 | `resolveLink(url)` | Optional, with the `links` capability. Reads a chapter page on one of your `domains` that another source handed over, and returns chapter content |
 
