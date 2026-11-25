@@ -70,6 +70,20 @@ See `examples/repo-template/README.md` for the source API.
 
 The `ShelfboundWidgets` extension has Continue reading and New chapters widgets for the Home Screen and Lock Screen, plus a Live Activity while chapters download. The app writes a small snapshot into the App Group `group.app.shelfbound`; the widgets only read it. To build it, pick your team under Signing & Capabilities for both targets and let Xcode register the App Group. Without the group the app still runs and the widgets stay empty.
 
+## Your own files
+
+Library › the import button (or Settings › Import books and comics) adds EPUB, PDF and CBZ files from Files or iCloud Drive, and "Open in Shelfbound" works from Files, Mail and other apps. Files are copied into the app, so the original can go.
+
+- **EPUB:** chapters follow the book's table of contents; files it doesn't name join the chapter before them. Images are kept. Picture-only EPUBs (most manga EPUBs) open in the image readers instead, right to left when the book says so.
+- **CBZ:** each folder in the archive is a chapter. ComicInfo.xml gives the title, series, writers and manga direction; long strips open in the vertical reader.
+- **PDF:** pages are drawn once at import and read in the paged reader, split into chapters by the PDF's bookmarks.
+
+DRM-protected books can't be opened. Imported works sit under "Your files" and are deleted from the work's menu (the backup file keeps their reading place, not the files).
+
+## App Store build
+
+The `Shelfbound App Store` scheme builds the App Store version (configuration `AppStore`, Swift flag `APP_STORE`). `docs/app-store/` has the submission steps, listing, review notes, privacy policy and subscription plan, and the **App Store build** workflow signs and uploads to TestFlight once the account secrets are set.
+
 ## Importing from other apps
 
 Settings › Import library reads a Paperback backup (`.pas4`, a zip), an Aidoku backup (`.aib`), or a list of links such as AO3 bookmarks. Each work is found on an installed source, by its link when a source has `idFromURL`, otherwise by searching its title, and read chapters carry over by chapter number. The backup readers were written from the apps' formats without a real backup to test against, so try one and report what doesn't come through.
