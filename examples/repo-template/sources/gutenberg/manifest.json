@@ -1,0 +1,9 @@
+{
+  "id": "org.shelfbound.example.gutenberg",
+  "name": "Project Gutenberg (example)",
+  "version": "1.0.0",
+  "kind": "text",
+  "languages": ["en"],
+  "contentRating": "safe",
+  "domains": ["gutendex.com", "www.gutenberg.org"]
+}

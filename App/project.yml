@@ -1,0 +1,39 @@
+name: Shelfbound
+options:
+  bundleIdPrefix: app.shelfbound
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+packages:
+  ShelfKit:
+    path: ..
+targets:
+  Shelfbound:
+    type: application
+    platform: iOS
+    sources:
+      - Shelfbound
+    dependencies:
+      - package: ShelfKit
+        product: ShelfCore
+      - package: ShelfKit
+        product: SourceKit
+      - package: ShelfKit
+        product: RepoKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.shelfbound.Shelfbound
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Shelfbound
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+    info:
+      path: Shelfbound/Resources/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: app.shelfbound.links
+            CFBundleURLSchemes: [shelfbound]
