@@ -4,6 +4,11 @@ name: UI tests
 # and saves a screenshot of every step plus a screen recording as artifacts.
 on:
   workflow_dispatch:
+    inputs:
+      check_ao3:
+        description: Also check AO3 search and reading (AO3 often throttles GitHub's runners)
+        type: boolean
+        default: false
   push:
     branches: ['claude/**']
     paths-ignore: ['**.md', 'examples/**', 'sdk/**']
@@ -49,8 +54,6 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
 
-      # AO3 often answers GitHub's runners with 429 (too many requests). When it does,
-      # the test still opens AO3 and its filter chips but doesn't fail on AO3 network steps.
       - name: Check that the sites the test uses answer from this runner
         run: |
           for url in "https://reaffirmed.github.io/shelfbound-sources/index.json" \
@@ -59,10 +62,11 @@ jobs:
             curl -sS -o /dev/null -A "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)" --max-time 60 \
               -w "%{http_code} in %{time_total}s  $url\n" "$url" || echo "failed: $url"
           done
-          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 -A "Mozilla/5.0" \
-            "https://archiveofourown.org/works/search?work_search%5Bquery%5D=coffee+shop" || echo 000)
-          if [ "$code" = 200 ]; then echo "AO3_REACHABLE=1" >> "$GITHUB_ENV"; else
-            echo "::warning::AO3 answered $code from this runner, so AO3 search and reading aren't checked in this run."
+          # AO3 throttles GitHub's runners on and off (429, 503, slow pages), even when a
+          # single check passes, so its network steps are off in CI. Run the workflow by hand
+          # with check_ao3 to try them.
+          if [ "${{ inputs.check_ao3 }}" = "true" ]; then echo "AO3_REACHABLE=1" >> "$GITHUB_ENV"; else
+            echo "::notice::AO3 search, series and reader steps aren't checked in CI (AO3 throttles GitHub's runners)."
             echo "AO3_REACHABLE=0" >> "$GITHUB_ENV"; fi
 
       - name: Build for testing
