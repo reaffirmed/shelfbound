@@ -69,6 +69,9 @@ final class AppModel {
     @ObservationIgnored private let store: SourceStore?
     @ObservationIgnored private let client = RepoClient(appVersion: AppModel.appVersion)
     @ObservationIgnored private var runtimes: [String: SourceRuntime] = [:]
+    /// First pages of browse lists, so switching tabs doesn't refetch them (AO3 asks for
+    /// three seconds between requests). Keyed by "sourceID/listingID".
+    @ObservationIgnored private var listingCache: [String: (at: Date, page: SearchPage)] = [:]
     @ObservationIgnored private let defaults = UserDefaults.standard
     @ObservationIgnored private let libraryFile: LibraryFile?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
@@ -171,6 +174,7 @@ final class AppModel {
             try store?.install(package, data: data, from: repo)
             runtimes[entry.id]?.close()
             runtimes[entry.id] = nil
+            forgetListings(of: entry.id)
             sourceUpdates[entry.id] = nil
             installed = store?.installed() ?? []
             configureRateLimits()
@@ -187,6 +191,7 @@ final class AppModel {
     func uninstall(_ id: String) {
         runtimes[id]?.close()
         runtimes[id] = nil
+        forgetListings(of: id)
         try? store?.remove(id)
         installed = store?.installed() ?? []
     }
@@ -209,6 +214,27 @@ final class AppModel {
             settings: ["maxRating": settings.maxRating.rawValue])
         runtimes[sourceID] = runtime
         return runtime
+    }
+
+    /// One page of a source's browse list. First pages are kept for ten minutes unless
+    /// `refresh` is set.
+    func listing(sourceID: String, listingID: String, page: Int = 1, refresh: Bool = false) async throws -> SearchPage {
+        let key = sourceID + "/" + listingID
+        if page == 1, !refresh, let cached = listingCache[key], Date().timeIntervalSince(cached.at) < 600 {
+            return cached.page
+        }
+        let result = try await runtime(for: sourceID).getListing(id: listingID, page: page)
+        if page == 1 { listingCache[key] = (Date(), result) }
+        return result
+    }
+
+    /// A first page already fetched, for showing a list without a spinner.
+    func cachedListing(sourceID: String, listingID: String) -> SearchPage? {
+        listingCache[sourceID + "/" + listingID]?.page
+    }
+
+    private func forgetListings(of sourceID: String) {
+        listingCache = listingCache.filter { !$0.key.hasPrefix(sourceID + "/") }
     }
 
     /// Installed sources the content filter allows, without link-only helpers.

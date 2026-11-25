@@ -66,6 +66,25 @@ final class SourceRuntimeTests: XCTestCase {
         XCTAssertEqual(content, .text(html: "<p>Once upon a time</p>", notesBefore: "hello", notesAfter: nil))
     }
 
+    func testListings() async throws {
+        let plain = try SourceRuntime(package: package(fullSource), network: network)
+        let none = try await plain.getListings()
+        XCTAssertTrue(none.isEmpty)
+
+        let script = fullSource.replacingOccurrences(of: "globalThis.source = {", with: #"""
+        globalThis.source = {
+          async getListings() { return [{ id: "new", title: "Freshly updated" }, { id: "top", title: "Best of all time", subtitle: "Most kudos" }]; },
+          async getListing(id, page) { return { results: [{ id: id + page, title: "From " + id, authors: [] }], hasMore: page < 2 }; },
+        """#)
+        let runtime = try SourceRuntime(package: package(script), network: network)
+        let listings = try await runtime.getListings()
+        XCTAssertEqual(listings.map(\.id), ["new", "top"])
+        XCTAssertEqual(listings.last?.subtitle, "Most kudos")
+        let page = try await runtime.getListing(id: "top", page: 1)
+        XCTAssertEqual(page.results.first?.id, "top1")
+        XCTAssertTrue(page.hasMore)
+    }
+
     func testUndeclaredDomainIsRefused() async throws {
         let script = fullSource.replacingOccurrences(of: "https://example.org/search", with: "https://other.example.com/search")
         let runtime = try SourceRuntime(package: package(script), network: network)
