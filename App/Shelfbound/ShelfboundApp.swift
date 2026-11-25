@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         BackgroundWork.register()
         UNUserNotificationCenter.current().delegate = self
+        Notifications.registerCategories()
         return true
     }
 
@@ -25,9 +26,20 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let userInfo = response.notification.request.content.userInfo
         let key = Notifications.workKey(from: userInfo)
+        let chapters = Notifications.chapterIDs(from: userInfo)
         let showDownloads = userInfo["opens"] as? String == "downloads"
+        let action = response.actionIdentifier
         await MainActor.run {
-            if showDownloads { AppModel.shared.pendingShowDownloads = true } else { AppModel.shared.pendingOpen = key }
+            let model = AppModel.shared
+            switch action {
+            case Notifications.markReadAction:
+                // From the Lock Screen or Apple Watch, without opening the app.
+                if let key { model.markNewChaptersRead(chapters, in: key) }
+            case Notifications.downloadAction:
+                if let key { model.downloadChapters(chapters, in: key) }
+            default:
+                if showDownloads { model.pendingShowDownloads = true } else { model.pendingOpen = key }
+            }
         }
     }
 }

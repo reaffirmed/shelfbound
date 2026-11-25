@@ -109,3 +109,31 @@ final class LibraryKitTests: XCTestCase {
         XCTAssertEqual(loaded.history.count, 1)
     }
 }
+
+final class UpdateAlertTests: XCTestCase {
+    private func found(_ id: String, _ count: Int) -> UpdateReport.Found {
+        UpdateReport.Found(key: WorkKey(sourceID: "s", workID: id), title: "Work \(id)",
+                           newChapters: (1...count).map { Chapter(id: "\(id)-\($0)", title: "Chapter \($0)", number: Double($0)) })
+    }
+
+    func testOneAlertPerWork() {
+        var report = UpdateReport()
+        report.found = [found("a", 1), found("b", 3)]
+        let alerts = UpdateChecker.alerts(report)
+        XCTAssertEqual(alerts.map(\.title), ["Work a", "Work b"])
+        XCTAssertEqual(alerts[0].body, "Chapter 1")
+        XCTAssertEqual(alerts[1].body, "3 new chapters, up to Chapter 3")
+        XCTAssertEqual(alerts[1].chapterIDs, ["b-1", "b-2", "b-3"])
+        XCTAssertEqual(alerts[1].thread, "work-s/b")
+        XCTAssertNotEqual(alerts[0].id, alerts[1].id)
+    }
+
+    func testSummaryWhenMany() {
+        var report = UpdateReport()
+        report.found = (1...6).map { found("w\($0)", 1) }
+        let alerts = UpdateChecker.alerts(report)
+        XCTAssertEqual(alerts.count, 1)
+        XCTAssertNil(alerts[0].key)
+        XCTAssertEqual(alerts[0].title, "6 new chapters")
+    }
+}

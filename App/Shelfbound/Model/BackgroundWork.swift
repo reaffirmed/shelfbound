@@ -92,19 +92,47 @@ enum Notifications {
         UNUserNotificationCenter.current().setBadgeCount(count) { _ in }
     }
 
-    /// "Hollow Tide: 2 new chapters", or one summary for several works.
+    static let newChaptersCategory = "new-chapters"
+    static let markReadAction = "mark-read"
+    static let downloadAction = "download"
+    static let chaptersKey = "chapters"
+
+    /// The buttons under a new-chapter alert. They show on the Lock Screen, in
+    /// Notification Center, and on a paired Apple Watch, which mirrors iPhone alerts.
+    static func registerCategories() {
+        let markRead = UNNotificationAction(identifier: markReadAction, title: "Mark as Read", options: [],
+                                            icon: UNNotificationActionIcon(systemImageName: "checkmark.circle"))
+        let download = UNNotificationAction(identifier: downloadAction, title: "Download", options: [],
+                                            icon: UNNotificationActionIcon(systemImageName: "arrow.down.circle"))
+        let category = UNNotificationCategory(
+            identifier: newChaptersCategory, actions: [download, markRead], intentIdentifiers: [],
+            hiddenPreviewsBodyPlaceholder: "New chapters", options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+    }
+
+    /// One alert per work ("Hollow Tide: 3 new chapters, up to Chapter 87"), grouped
+    /// by work, or one summary when many works updated at once.
     static func post(_ report: UpdateReport, downloading: Bool) {
-        guard let text = UpdateChecker.notificationText(report) else { return }
-        let content = UNMutableNotificationContent()
-        content.title = text.title
-        content.body = text.body + (downloading ? " · Downloading for offline reading" : "")
-        content.sound = .default
-        content.threadIdentifier = "updates"
-        if report.found.count == 1, let key = report.found.first?.key {
-            content.userInfo = [workKey + ".source": key.sourceID, workKey + ".id": key.workID]
+        for alert in UpdateChecker.alerts(report) {
+            let content = UNMutableNotificationContent()
+            content.title = alert.title
+            content.body = alert.body + (downloading && alert.key != nil ? " · Downloading for offline reading" : "")
+            content.sound = .default
+            content.threadIdentifier = alert.thread
+            content.relevanceScore = alert.key == nil ? 0.5 : 0.8
+            if let key = alert.key {
+                content.categoryIdentifier = newChaptersCategory
+                content.userInfo = [workKey + ".source": key.sourceID, workKey + ".id": key.workID, chaptersKey: alert.chapterIDs]
+                content.targetContentIdentifier = key.id
+            }
+            // Same identifier per work, so a later check replaces the older alert instead of stacking.
+            let request = UNNotificationRequest(identifier: alert.id, content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request)
         }
-        let request = UNNotificationRequest(identifier: "updates-\(UUID().uuidString)", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+    }
+
+    static func chapterIDs(from userInfo: [AnyHashable: Any]) -> [String] {
+        userInfo[chaptersKey] as? [String] ?? []
     }
 
     /// Downloads paused on a site's bot check, which only the person can pass.
