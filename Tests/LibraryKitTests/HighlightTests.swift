@@ -6,7 +6,7 @@ import XCTest
 final class HighlightTests: XCTestCase {
     private let key = WorkKey(sourceID: "a", workID: "1")
 
-    private func record() -> WorkRecord {
+    private func makeRecord() -> WorkRecord {
         var r = WorkRecord(key: key, summary: WorkSummary(id: "1", title: "The Long Road", authors: ["Wren"]), format: .novel)
         r.chapters = [
             Chapter(id: "c1", title: "Chapter 1: Start", number: 1),
@@ -17,7 +17,7 @@ final class HighlightTests: XCTestCase {
 
     func testAddEditRemove() {
         var state = LibraryState()
-        state[key] = record()
+        state[key] = makeRecord()
         let h = Highlight(chapterID: "c2", chapterTitle: "Chapter 2: Middle", exact: "the sea")
         state.addHighlight(h, to: key)
         state.addHighlight(Highlight(chapterID: "c1", chapterTitle: "Chapter 1: Start", exact: "a door"), to: key)
@@ -29,7 +29,7 @@ final class HighlightTests: XCTestCase {
     }
 
     func testQuoteAndMarkdown() {
-        var r = record()
+        var r = makeRecord()
         r.highlights = [
             Highlight(chapterID: "c1", chapterTitle: "Chapter 1: Start", exact: "First line.\n\nSecond line.", note: "Two paragraphs"),
             Highlight(chapterID: "c2", chapterTitle: "Chapter 2: Middle", exact: "Onward"),
@@ -43,14 +43,14 @@ final class HighlightTests: XCTestCase {
 
     func testOldLibraryFilesStillDecode() throws {
         let encoder = JSONEncoder()
-        var object = try JSONSerialization.jsonObject(with: encoder.encode(record())) as! [String: Any]
+        var object = try JSONSerialization.jsonObject(with: encoder.encode(makeRecord())) as! [String: Any]
         object.removeValue(forKey: "highlights")
         let data = try JSONSerialization.data(withJSONObject: object)
         XCTAssertNil(try JSONDecoder().decode(WorkRecord.self, from: data).highlights)
     }
 
     func testMigrationMovesHighlightsByChapterNumber() {
-        var r = record()
+        var r = makeRecord()
         r.highlights = [
             Highlight(chapterID: "c2", chapterTitle: "Chapter 2: Middle", exact: "x"),
             Highlight(chapterID: "gone", chapterTitle: "Side story", exact: "y"),
