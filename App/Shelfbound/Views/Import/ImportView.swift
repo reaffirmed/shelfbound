@@ -3,8 +3,8 @@ import ShelfCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Settings › Import library: a Paperback or Aidoku backup, or pasted links (AO3 bookmarks,
-/// a reading list). Works are matched to installed sources, so install those first.
+/// Settings › Import library: a backup from another reader app (sideload build only), or
+/// pasted links (bookmarks, a reading list). Works are matched to installed sources, so install those first.
 @MainActor
 struct ImportView: View {
     @Environment(AppModel.self) private var model
@@ -37,10 +37,12 @@ struct ImportView: View {
 
     private var chooser: some View {
         Group {
-            Section {
-                Button { choosingFile = true } label: { Label("Choose a backup file", systemImage: "doc.badge.arrow.up") }
-            } footer: {
-                Text("A Paperback backup (.pas4) or an Aidoku backup (.aib). Export it from that app's settings, then pick it here.")
+            if !AppFlavor.isAppStore {
+                Section {
+                    Button { choosingFile = true } label: { Label("Choose a backup file", systemImage: "doc.badge.arrow.up") }
+                } footer: {
+                    Text("A Paperback backup (.pas4) or an Aidoku backup (.aib). Export it from that app's settings, then pick it here.")
+                }
             }
             Section {
                 TextField("Paste links, one per line", text: $links, axis: .vertical)
@@ -55,7 +57,7 @@ struct ImportView: View {
             } header: {
                 Text("Links")
             } footer: {
-                Text("Links to AO3 works, bookmarks or any site a source of yours reads. On AO3, open your Bookmarks page and copy the work links.")
+                Text("Links to works on any site a source of yours reads, such as your bookmarks there.")
             }
             if let error {
                 Section { Text(error).foregroundStyle(Color.shelfWarning) }

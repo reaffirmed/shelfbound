@@ -16,6 +16,8 @@ struct SettingsView: View {
     @State private var pendingRestore: LibraryBackup?
     @State private var restoring = false
     @State private var restoreMessage: String?
+    @State private var choosingFiles = false
+    @State private var confirmingAdult = false
     @AppStorage(SearchLayout.key) private var searchLayout: SearchLayout = .list
 
     var body: some View {
@@ -63,13 +65,23 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Button { choosingFiles = true } label: {
+                        row("Import books and comics", icon: "doc.badge.plus", color: Color(hex: "#C2477B"),
+                            value: model.importingFiles.isEmpty ? "" : "Importing...", chevron: true)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.importFiles")
                     NavigationLink {
                         ImportView()
                     } label: {
                         Label { Text("Import library") } icon: { RowIcon(systemImage: "square.and.arrow.down", color: Color(hex: "#3A7BD5")) }
                     }
+                } header: {
+                    Text("Import")
                 } footer: {
-                    Text("From Paperback, Aidoku, or a list of links such as AO3 bookmarks.")
+                    Text(AppFlavor.isAppStore
+                         ? "EPUB, PDF and CBZ files from Files, iCloud Drive or another app. Import library matches a list of links to your sources."
+                         : "EPUB, PDF and CBZ files from Files, iCloud Drive or another app. Import library reads a backup from another reader app, or a list of links.")
                 }
 
                 Section {
@@ -80,7 +92,7 @@ struct SettingsView: View {
                     }
                     .accessibilityIdentifier("settings.accounts")
                 } footer: {
-                    Text("Sign in to sites like AO3 to import your bookmarks and read works for signed-in users.")
+                    Text("Sign in to a site one of your sources supports, to import your lists from it and read works for signed-in users.")
                 }
 
                 Section {
@@ -124,7 +136,7 @@ struct SettingsView: View {
                         row("Repositories", icon: "shippingbox", color: Color(hex: "#4B4FB8"), value: "\(model.repos.count)", chevron: true)
                     }
                     .buttonStyle(.plain)
-                    Picker(selection: $model.settings.maxRating) {
+                    Picker(selection: ratingBinding) {
                         Text("Safe").tag(ContentRating.safe)
                         Text("Mature").tag(ContentRating.mature)
                         Text("Explicit").tag(ContentRating.explicit)
@@ -150,6 +162,10 @@ struct SettingsView: View {
 
                 Section {
                     LabeledContent("Version", value: AppModel.appVersion)
+                    Link(destination: AppFlavor.privacyPolicyURL) {
+                        row("Privacy policy", icon: "hand.raised", color: Color(hex: "#2F8F6A"), value: "", chevron: true)
+                    }
+                    .buttonStyle(.plain)
                 } footer: {
                     Text("Shelfbound doesn't host content or list repositories. Only add sources for sites whose terms allow it.")
                 }
@@ -200,7 +216,27 @@ struct SettingsView: View {
                 Text(restoreMessage ?? "")
             }
             .sheet(isPresented: $showingStyle) { ReaderStyleSheet().presentationDetents([.medium, .large]) }
+            .localFileImporter(isPresented: $choosingFiles, model: model)
+            .confirmationDialog("Are you 18 or older?", isPresented: $confirmingAdult, titleVisibility: .visible) {
+                Button("I'm 18 or older") { model.settings.maxRating = .explicit }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Explicit sources can show adult content. Only choose this if you're an adult.")
+            }
         }
+    }
+
+    /// The App Store build asks for the person's age before explicit sources show.
+    private var ratingBinding: Binding<ContentRating> {
+        Binding(
+            get: { model.settings.maxRating },
+            set: { value in
+                if value == .explicit, AppFlavor.isAppStore, model.settings.maxRating != .explicit {
+                    confirmingAdult = true
+                } else {
+                    model.settings.maxRating = value
+                }
+            })
     }
 
     private var accountsValue: String {

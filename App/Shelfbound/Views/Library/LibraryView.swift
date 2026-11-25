@@ -21,6 +21,8 @@ struct LibraryView: View {
     @State private var filter: LibraryFilter = .all
     @State private var path = NavigationPath()
     @State private var reading: ReaderRequest?
+    @State private var choosingFiles = false
+    @State private var deleting: WorkRecord?
 
     private let columns = [GridItem(.adaptive(minimum: 100, maximum: 160), spacing: 14, alignment: .top)]
 
@@ -28,6 +30,7 @@ struct LibraryView: View {
         @Bindable var model = model
         NavigationStack(path: $path) {
             ScrollView {
+                FileImportBanner()
                 if model.library.library.isEmpty {
                     emptyState
                 } else {
@@ -53,6 +56,8 @@ struct LibraryView: View {
             .navigationDestination(for: LibrarySectionRoute.self) { SectionView(route: $0) }
             .navigationDestination(for: UpdatesRoute.self) { _ in UpdatesView() }
             .fullScreenCover(item: $reading) { ReaderView(request: $0) }
+            .localFileImporter(isPresented: $choosingFiles, model: model)
+            .modifier(DeleteLocalFileDialog(record: $deleting))
             .onChange(of: model.pendingOpen, initial: true) { _, key in
                 guard let key, let record = model.record(key) else { return }
                 model.pendingOpen = nil
@@ -76,7 +81,13 @@ struct LibraryView: View {
         ContentUnavailableView {
             Label("Your library is empty", systemImage: "books.vertical")
         } description: {
-            Text("Find something in Discover or Search and tap the heart to keep it here. Fics, manga and manhwa all land on one shelf.")
+            Text("Import your own EPUB, PDF and CBZ files, or add a repository in Settings to find more. Books, comics, manga and manhwa all land on one shelf.")
+        } actions: {
+            Button { choosingFiles = true } label: {
+                Label("Import files", systemImage: "doc.badge.plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier("library.importFiles")
         }
         .padding(.top, 80)
     }
@@ -147,7 +158,7 @@ struct LibraryView: View {
             LazyVGrid(columns: columns, spacing: 18) {
                 ForEach(section.records.prefix(section.records.count > 6 ? 6 : section.records.count)) { record in
                     NavigationLink(value: WorkRoute(key: record.key, summary: record.summary)) {
-                        LibraryTile(record: record)
+                        LibraryTile(record: record, delete: { deleting = record })
                     }
                     .buttonStyle(.plain)
                 }
@@ -160,6 +171,11 @@ struct LibraryView: View {
     private var toolbar: some ToolbarContent {
         @Bindable var model = model
         ToolbarItemGroup(placement: .primaryAction) {
+            Button { choosingFiles = true } label: {
+                Image(systemName: "doc.badge.plus")
+            }
+            .accessibilityLabel("Import files")
+
             Menu {
                 Picker("Group by", selection: $model.settings.grouping) {
                     ForEach(LibraryGrouping.allCases) { Text($0.label).tag($0) }
@@ -231,6 +247,8 @@ extension SectionHeader where Trailing == EmptyView {
 struct LibraryTile: View {
     @Environment(AppModel.self) private var model
     let record: WorkRecord
+    /// Asks to delete an imported file. Without it, imported files offer nothing to remove.
+    var delete: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -239,8 +257,16 @@ struct LibraryTile: View {
             Text(meta).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
         }
         .contextMenu {
-            Button(role: .destructive) { model.toggleLibrary(record.key) } label: {
-                Label("Remove from library", systemImage: "heart.slash")
+            if LocalBooks.isLocal(record.key) {
+                if let delete {
+                    Button(role: .destructive, action: delete) {
+                        Label("Delete from device", systemImage: "trash")
+                    }
+                }
+            } else {
+                Button(role: .destructive) { model.toggleLibrary(record.key) } label: {
+                    Label("Remove from library", systemImage: "heart.slash")
+                }
             }
         }
     }

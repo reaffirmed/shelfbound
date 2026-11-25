@@ -23,6 +23,14 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO build | tail -50
           exit ${PIPESTATUS[0]}
+      - name: Build the App Store flavor for simulator
+        run: |
+          cd App
+          xcodebuild -project Shelfbound.xcodeproj -scheme "Shelfbound App Store" \
+            -configuration AppStore \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tail -50
+          exit ${PIPESTATUS[0]}
 
   sdk:
     runs-on: ubuntu-latest

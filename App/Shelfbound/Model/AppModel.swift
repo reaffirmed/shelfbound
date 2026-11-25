@@ -33,7 +33,7 @@ struct UnhandledLink: Error, LocalizedError {
 @Observable
 final class AppModel {
     static let shared = AppModel()
-    nonisolated static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.1"
+    nonisolated static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.0"
 
     private(set) var repos: [SavedRepo] = []
     private(set) var installed: [InstalledSource] = []
@@ -79,6 +79,10 @@ final class AppModel {
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private let resolverBox: ResolverBox
     @ObservationIgnored private let widgets = WidgetBridge()
+    /// EPUB, PDF and CBZ files the person imported.
+    @ObservationIgnored let localFiles: LocalFiles?
+    /// Files being imported right now, for the progress banner.
+    private(set) var importingFiles: [String] = []
 
     private enum Keys {
         static let repos = "repos"
@@ -89,6 +93,7 @@ final class AppModel {
     private init() {
         store = try? SourceStore()
         libraryFile = try? LibraryFile.default()
+        localFiles = try? LocalFiles.default()
         let layout = (try? DownloadLayout.default())
             ?? DownloadLayout(root: FileManager.default.temporaryDirectory.appendingPathComponent("Downloads"))
         let transfer = BackgroundTransfer(staging: layout.staging)
@@ -106,6 +111,7 @@ final class AppModel {
         repos = Self.load([SavedRepo].self, Keys.repos, from: .standard) ?? []
         installed = store?.installed() ?? []
         library = libraryFile?.load() ?? LibraryState()
+        relinkLocalCovers()
         accounts = Self.load([String: SavedAccount].self, Keys.accounts, from: .standard) ?? [:]
         // Put signed-in sites' cookies back, in case the cookie store lost them.
         for sourceID in accounts.keys {
@@ -128,6 +134,11 @@ final class AppModel {
     // MARK: - Repos
 
     func handle(url: URL) {
+        // A file opened with "Open in Shelfbound" or shared from Files.
+        if url.isFileURL {
+            Task { await importFiles([url]) }
+            return
+        }
         // shelfbound://add-repo?url=https://example.github.io/repo
         // shelfbound://open?source=…&work=… from a widget
         if let key = WidgetSnapshot.workKey(from: url) {
@@ -212,7 +223,10 @@ final class AppModel {
         installed.first { $0.id == sourceID }?.manifest
     }
 
-    func sourceName(_ sourceID: String) -> String { manifest(for: sourceID)?.name ?? sourceID }
+    func sourceName(_ sourceID: String) -> String {
+        if sourceID == LocalBooks.sourceID { return LocalBooks.sourceName }
+        return manifest(for: sourceID)?.name ?? sourceID
+    }
 
     func runtime(for sourceID: String) throws -> SourceRuntime {
         if let runtime = runtimes[sourceID] { return runtime }
@@ -415,6 +429,10 @@ final class AppModel {
     /// Fetches the work page and chapter list and merges them into the library.
     func refreshWork(_ key: WorkKey, summary: WorkSummary) async throws {
         ensureRecord(key, summary: summary)
+        if LocalBooks.isLocal(key) {
+            try refreshLocal(key)
+            return
+        }
         let runtime = try runtime(for: key.sourceID)
         async let w = runtime.getWork(id: key.workID)
         async let c = runtime.getChapters(workID: key.workID)
@@ -525,6 +543,11 @@ final class AppModel {
     /// Content for one chapter: the downloaded copy if there is one, else from the source.
     /// Chapter links are handed to whichever installed source reads that site.
     func content(for ref: ChapterRef, chapter: Chapter?) async throws -> ChapterContent {
+        if LocalBooks.isLocal(ref.work) {
+            guard let localFiles else { throw LocalFileError.missing }
+            let book = try localFiles.load(ref.work.workID)
+            return try book.content(of: ref.chapterID, in: localFiles.folder(book.id))
+        }
         if let local = await downloadManager.localContent(for: ref) { return local }
         // A chapter that already points at a site some source reads goes straight there.
         // Otherwise the work's own source answers, and may hand back a link (a discovery
@@ -570,9 +593,81 @@ final class AppModel {
         }
     }
 
+    // MARK: - Imported files
+
+    /// Imports EPUB, PDF and CBZ files into the library. Opens the work when it's just one.
+    func importFiles(_ urls: [URL]) async {
+        guard let localFiles else { return }
+        var imported: [WorkKey] = []
+        var failures: [String] = []
+        for url in urls {
+            let name = url.lastPathComponent
+            importingFiles.append(name)
+            defer { importingFiles.removeAll { $0 == name } }
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            do {
+                let book = try await Task.detached(priority: .userInitiated) { try localFiles.importFile(at: url) }.value
+                addLocal(book)
+                imported.append(book.key)
+            } catch {
+                failures.append(error.readable)
+            }
+            // Files shared into the app arrive in its Inbox; they're copied now, so drop the original.
+            if url.path.contains("/Inbox/") { try? FileManager.default.removeItem(at: url) }
+        }
+        if imported.count == 1 { pendingOpen = imported[0] }
+        if !failures.isEmpty {
+            lastError = failures.joined(separator: "\n")
+            showingError = true
+        }
+    }
+
+    private func addLocal(_ book: LocalBook) {
+        guard let localFiles else { return }
+        let folder = localFiles.folder(book.id)
+        library.upsert(key: book.key, summary: book.summary(in: folder), work: book.work(in: folder), chapters: book.chapters, format: book.format)
+        library.setInLibrary(book.key, true)
+        saveNow()
+    }
+
+    private func refreshLocal(_ key: WorkKey) throws {
+        guard let localFiles else { throw LocalFileError.missing }
+        let book = try localFiles.load(key.workID)
+        let folder = localFiles.folder(book.id)
+        let existing = library[key]
+        library.upsert(key: key, summary: book.summary(in: folder), work: book.work(in: folder), chapters: book.chapters,
+                       format: existing?.format ?? book.format)
+        scheduleSave()
+    }
+
+    /// iOS moves the app's folder when it updates the app, so covers saved with the old path are re-pointed.
+    private func relinkLocalCovers() {
+        guard let localFiles else { return }
+        for record in library.records.values where LocalBooks.isLocal(record.key) {
+            guard let book = try? localFiles.load(record.key.workID) else { continue }
+            let folder = localFiles.folder(book.id)
+            library.update(record.key) {
+                $0.summary.coverURL = book.summary(in: folder).coverURL
+                $0.work?.coverURL = $0.summary.coverURL
+            }
+        }
+    }
+
+    /// Removes an imported file from the device and the library.
+    func deleteLocal(_ key: WorkKey) {
+        guard LocalBooks.isLocal(key) else { return }
+        localFiles?.delete(key.workID)
+        library.records[key.id] = nil
+        saveNow()
+        refreshBadge()
+    }
+
     // MARK: - Downloads
 
     func download(_ chapters: [Chapter], of record: WorkRecord, automatic: Bool = false) {
+        // Imported files are already on the device.
+        guard !LocalBooks.isLocal(record.key) else { return }
         let requests = chapters.map {
             DownloadRequest(
                 ref: ChapterRef(work: record.key, chapterID: $0.id), workTitle: record.title, chapterTitle: $0.title,
@@ -641,7 +736,11 @@ final class AppModel {
             runtimesBySource[source] = try? runtime(for: source)
         }
         let snapshot = runtimesBySource
+        // Imported files never change, so their chapter list is the one already saved.
+        let localChapters = Dictionary(uniqueKeysWithValues: library.library
+            .filter { LocalBooks.isLocal($0.key) }.map { ($0.key, $0.chapters) })
         let (next, report) = await UpdateChecker.check(library, only: keys) { key in
+            if let chapters = localChapters[key] { return chapters }
             guard let runtime = snapshot[key.sourceID] else { throw SourceError.unavailable }
             return try await runtime.getChapters(workID: key.workID)
         }
