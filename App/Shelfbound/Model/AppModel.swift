@@ -299,6 +299,20 @@ final class AppModel {
         refreshBadge()
     }
 
+    /// Moves a work to another source, keeping read chapters, place, settings and glossary.
+    /// Downloads from the old source are deleted, since nothing can open them any more.
+    func migrate(_ old: WorkKey, to key: WorkKey, summary: WorkSummary, work: Work?, chapters: [Chapter]) {
+        guard let record = library[old], old != key else { return }
+        let next = Migration.migrate(
+            record, to: key, summary: summary, work: work, chapters: chapters,
+            format: format(for: summary, sourceID: key.sourceID))
+        library.replace(old, with: next)
+        scheduleSave()
+        refreshBadge()
+        Task { await downloadManager.deleteWork(old) }
+        if next.inLibrary { downloadAhead(next) }
+    }
+
     func removeFromHistory(_ key: WorkKey) {
         library.update(key) { $0.lastReadAt = nil; $0.position = nil }
         scheduleSave()

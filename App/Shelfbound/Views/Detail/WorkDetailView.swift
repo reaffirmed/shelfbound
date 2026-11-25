@@ -13,6 +13,8 @@ struct WorkDetailView: View {
     @State private var loading = false
     @State private var error: String?
     @State private var verifying: VerificationRequest?
+    @State private var migrating = false
+    @Environment(\.dismiss) private var dismiss
     @State private var reading: ReaderRequest?
     @State private var newestFirst = false
     @State private var showingGlossary = false
@@ -54,6 +56,17 @@ struct WorkDetailView: View {
         }
         .fullScreenCover(item: $reading) { ReaderView(request: $0) }
         .browserVerification($verifying)
+        .sheet(isPresented: $migrating) {
+            if let record {
+                NavigationStack {
+                    MigrateView(record: record) { newKey in
+                        // This page is for the old source; open the work where it lives now.
+                        dismiss()
+                        model.pendingOpen = newKey
+                    }
+                }
+            }
+        }
         .onChange(of: model.verifiedCount) { _, _ in
             if error != nil { Task { await load() } }
         }
@@ -375,6 +388,9 @@ struct WorkDetailView: View {
                         if let last = record.readingOrder.last { model.markReadThrough(last.id, in: key) }
                     } label: {
                         Label("Mark all as read", systemImage: "checkmark.circle")
+                    }
+                    Button { migrating = true } label: {
+                        Label("Move to another source", systemImage: "arrow.triangle.swap")
                     }
                     if let downloads = record.work?.downloads, !downloads.isEmpty {
                         Section("Download from the site") {
