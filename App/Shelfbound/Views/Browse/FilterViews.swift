@@ -439,19 +439,28 @@ struct CoverGrid: View {
     /// a disclosure chevron beside every tile.
     let open: (WorkRoute) -> Void
 
-    private let columns = [GridItem(.adaptive(minimum: ListingTile.width, maximum: ListingTile.width + 32), spacing: 12, alignment: .top)]
+    /// Three across on a phone, more on wider screens, each cover as wide as its column.
+    private let columns = [GridItem(.adaptive(minimum: 96, maximum: 160), spacing: 12, alignment: .top)]
 
     var body: some View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
             ForEach(items) { item in
                 Button { open(item.route) } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        ListingTile(work: item.route.summary, format: item.format)
-                        if let caption = item.caption {
-                            Text(caption).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
-                                .frame(width: ListingTile.width, alignment: .leading)
-                        }
+                    let work = item.route.summary
+                    VStack(alignment: .leading, spacing: 3) {
+                        CoverView(
+                            title: work.title, author: work.authors.first ?? "", format: item.format, url: work.coverURL,
+                            words: work.wordCount, chapters: work.chapterCount)
+                        Text(work.title)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(2, reservesSpace: true)
+                            .multilineTextAlignment(.leading)
+                        Text(item.caption ?? work.authors.first ?? work.fandoms?.first ?? item.format.label)
+                            .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                     }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("work.result")
@@ -465,7 +474,7 @@ struct CoverGrid: View {
             }
         }
         .padding(.vertical, 8)
-        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
         .listRowBackground(Color.clear)
     }
 }
