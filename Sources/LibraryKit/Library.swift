@@ -38,6 +38,8 @@ public struct WorkSettings: Codable, Sendable, Hashable {
     public var translateTo: String?
     /// The language the work is written in, when detection guesses wrong. Nil detects it.
     public var translateFrom: String?
+    /// Paged image chapters: zoom from panel to panel instead of showing whole pages.
+    public var panelByPanel: Bool?
 
     public init(readingMode: ReadingMode? = nil, autoDownload: Bool? = nil, skipNotes: Bool = false, preferredGroup: String? = nil) {
         self.readingMode = readingMode

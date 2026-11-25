@@ -10,6 +10,7 @@ struct PagedImageReader: UIViewControllerRepresentable {
     let pages: [ImagePage]
     let startPage: Int
     let rightToLeft: Bool
+    var panelByPanel = false
     let endTitle: String
     let nextTitle: String?
     @Binding var page: Int
@@ -20,6 +21,7 @@ struct PagedImageReader: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> PagedImageReaderController {
         let controller = PagedImageReaderController()
         controller.callbacks = callbacks(context)
+        controller.panelByPanel = panelByPanel
         controller.load(chapterID: chapterID, pages: pages, start: startPage, rightToLeft: rightToLeft, endTitle: endTitle, nextTitle: nextTitle)
         return controller
     }
@@ -30,6 +32,7 @@ struct PagedImageReader: UIViewControllerRepresentable {
             controller.load(chapterID: chapterID, pages: pages, start: startPage, rightToLeft: rightToLeft, endTitle: endTitle, nextTitle: nextTitle)
         } else {
             controller.setRightToLeft(rightToLeft)
+            controller.setPanelByPanel(panelByPanel)
             controller.updateEnd(title: endTitle, next: nextTitle)
             if controller.currentIndex != page { controller.go(to: page, animated: false) }
         }
@@ -57,6 +60,10 @@ final class PagedImageReaderController: UIViewController, UIPageViewControllerDa
     private(set) var currentIndex = 0
     private var pages: [ImagePage] = []
     private var rightToLeft = true
+    /// Zoom from panel to panel; taps move between panels before pages.
+    var panelByPanel = false
+    /// Set while stepping back a page, so that page opens on its last panel.
+    private var enteringBackward = false
     private var endTitle = ""
     private var nextTitle: String?
     private let pageController = UIPageViewController(
@@ -97,6 +104,12 @@ final class PagedImageReaderController: UIViewController, UIPageViewControllerDa
         }
     }
 
+    func setPanelByPanel(_ value: Bool) {
+        guard value != panelByPanel else { return }
+        panelByPanel = value
+        (pageController.viewControllers?.first as? ZoomingPageController)?.setGuided(value, rightToLeft: rightToLeft)
+    }
+
     func updateEnd(title: String, next: String?) {
         guard title != endTitle || next != nextTitle else { return }
         endTitle = title
@@ -125,7 +138,9 @@ final class PagedImageReaderController: UIViewController, UIPageViewControllerDa
         } else if target < 0 {
             callbacks.previousChapter()
         } else {
+            enteringBackward = delta < 0
             go(to: target, animated: true)
+            enteringBackward = false
         }
     }
 
@@ -141,19 +156,28 @@ final class PagedImageReaderController: UIViewController, UIPageViewControllerDa
         }
         let page = ZoomingPageController(page: pages[index])
         page.index = index
+        page.guided = panelByPanel
+        page.rightToLeft = rightToLeft
+        page.startAtLastPanel = enteringBackward
         page.onTap = { [weak self] point, width in self?.handleTap(point, width: width) }
         return page
     }
 
     private func handleTap(_ point: CGPoint, width: CGFloat) {
         let zone = point.x / max(width, 1)
+        let delta: Int
         if zone < 0.3 {
-            step(rightToLeft ? 1 : -1)
+            delta = rightToLeft ? 1 : -1
         } else if zone > 0.7 {
-            step(rightToLeft ? -1 : 1)
+            delta = rightToLeft ? -1 : 1
         } else {
             callbacks.tapCenter()
+            return
         }
+        if panelByPanel, let page = pageController.viewControllers?.first as? ZoomingPageController, page.stepPanel(delta) {
+            return
+        }
+        step(delta)
     }
 
     private func prefetch(around index: Int) {
@@ -187,6 +211,14 @@ final class PagedImageReaderController: UIViewController, UIPageViewControllerDa
 final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
     var index = 0
     var onTap: (CGPoint, CGFloat) -> Void = { _, _ in }
+    var guided = false
+    var rightToLeft = true
+    var startAtLastPanel = false
+    /// Panels in reading order, once detected; nil until then.
+    private var panels: [PanelRect]?
+    /// The panel shown, or -1 for the whole page.
+    private var panelIndex = -1
+    private var detectTask: Task<Void, Never>?
     private let page: ImagePage
     private let scrollView = UIScrollView()
     private let imageView = UIImageView()
@@ -251,6 +283,7 @@ final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
         let width = max(view.bounds.width, UIScreen.main.bounds.width) * 1.5 // decode a little larger for zoom
         if let hit = ImageLoader.shared.cached(page, width: width) {
             imageView.image = hit
+            findPanels()
             return
         }
         spinner.startAnimating()
@@ -258,6 +291,7 @@ final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
             do {
                 let loaded = try await ImageLoader.shared.load(page, width: width)
                 self?.imageView.image = loaded.image
+                self?.findPanels()
             } catch {
                 if !Task.isCancelled { self?.retry.isHidden = false }
             }
@@ -265,17 +299,99 @@ final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
         }
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        showStartPanel()
+    }
+
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         scrollView.setZoomScale(1, animated: false)
+        panelIndex = -1
     }
 
-    deinit { task?.cancel() }
+    deinit {
+        task?.cancel()
+        detectTask?.cancel()
+    }
+
+    // MARK: Panels
+
+    func setGuided(_ value: Bool, rightToLeft: Bool) {
+        guided = value
+        if rightToLeft != self.rightToLeft { panels = nil }
+        self.rightToLeft = rightToLeft
+        startAtLastPanel = false
+        if value {
+            findPanels()
+            showStartPanel()
+        } else {
+            panelIndex = -1
+            scrollView.setZoomScale(1, animated: true)
+        }
+    }
+
+    /// Moves to the next or previous panel. False at the page's edge, so the reader turns the page.
+    func stepPanel(_ delta: Int) -> Bool {
+        guard guided, let panels, !panels.isEmpty else { return false }
+        let next = panelIndex + delta
+        // Back from the first panel, or on from the last, turns the page.
+        guard next >= 0, next < panels.count else { return false }
+        return show(panel: next)
+    }
+
+    private func findPanels() {
+        guard guided, panels == nil, detectTask == nil, let image = imageView.image else { return }
+        let key = page.url.absoluteString + (rightToLeft ? "|rtl" : "|ltr")
+        if let known = PanelCache.shared[key] {
+            panels = known
+            showStartPanel()
+            return
+        }
+        let rtl = rightToLeft
+        detectTask = Task { [weak self] in
+            let found = await Task.detached(priority: .userInitiated) { PanelCache.detect(image, rightToLeft: rtl) }.value
+            guard let self, !Task.isCancelled else { return }
+            PanelCache.shared[key] = found
+            self.panels = found
+            self.detectTask = nil
+            self.showStartPanel()
+        }
+    }
+
+    private func showStartPanel() {
+        guard guided, let panels, !panels.isEmpty, panelIndex < 0, view.window != nil else { return }
+        _ = show(panel: startAtLastPanel ? panels.count - 1 : 0)
+        startAtLastPanel = false
+    }
+
+    @discardableResult
+    private func show(panel index: Int) -> Bool {
+        panelIndex = index
+        guard index >= 0, let panels, panels.indices.contains(index), let image = imageView.image else {
+            scrollView.setZoomScale(1, animated: true)
+            return true
+        }
+        scrollView.maximumZoomScale = 8
+        // Where the image sits inside the image view, which is aspect fit.
+        let bounds = imageView.bounds
+        let scale = min(bounds.width / max(image.size.width, 1), bounds.height / max(image.size.height, 1))
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let origin = CGPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2)
+        let p = panels[index]
+        let rect = CGRect(x: origin.x + p.x * size.width, y: origin.y + p.y * size.height,
+                          width: p.width * size.width, height: p.height * size.height).insetBy(dx: -6, dy: -6)
+        UIView.animate(withDuration: 0.35, delay: 0, options: [.curveEaseInOut]) {
+            self.scrollView.zoom(to: rect, animated: false)
+        }
+        UIAccessibility.post(notification: .announcement, argument: "Panel \(index + 1) of \(panels.count)")
+        return true
+    }
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
 
     @objc private func singleTapped(_ gesture: UITapGestureRecognizer) {
-        guard scrollView.zoomScale <= 1.01 else { return }
+        guard guided || scrollView.zoomScale <= 1.01 else { return }
         onTap(gesture.location(in: view), view.bounds.width)
     }
 
@@ -347,5 +463,41 @@ final class EndCardController: UIViewController {
 
     @objc private func tapped(_ gesture: UITapGestureRecognizer) {
         onTap(gesture.location(in: view), view.bounds.width)
+    }
+}
+
+/// Panels found per page, kept while the app runs, and the image work to find them.
+@MainActor
+final class PanelCache {
+    static let shared = PanelCache()
+    private var entries: [String: [PanelRect]] = [:]
+    private var order: [String] = []
+
+    subscript(key: String) -> [PanelRect]? {
+        get { entries[key] }
+        set {
+            guard let newValue else { return }
+            if entries[key] == nil { order.append(key) }
+            entries[key] = newValue
+            while order.count > 300 { entries.removeValue(forKey: order.removeFirst()) }
+        }
+    }
+
+    /// Draws the page small and grey and runs the gutter detector over it.
+    nonisolated static func detect(_ image: UIImage, rightToLeft: Bool) -> [PanelRect] {
+        guard let cg = image.cgImage, cg.width > 0 else { return [] }
+        let width = min(320, cg.width)
+        let height = max(1, min(1600, Int(Double(cg.height) * Double(width) / Double(cg.width))))
+        var pixels = [UInt8](repeating: 255, count: width * height)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+                space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return false }
+            context.interpolationQuality = .medium
+            context.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn else { return [] }
+        return PanelDetector.detect(gray: pixels, width: width, height: height, rightToLeft: rightToLeft)
     }
 }
