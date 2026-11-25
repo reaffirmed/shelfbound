@@ -274,7 +274,7 @@ struct BrowseView: View {
                             CoverGrid.Item(
                                 route: WorkRoute(key: WorkKey(sourceID: result.source.id, workID: work.id), summary: work),
                                 format: work.format ?? result.source.manifest.defaultFormat)
-                        })
+                        }) { path.append($0) }
                     } else {
                         ForEach(page.results.prefix(8)) { work in
                             NavigationLink(value: WorkRoute(key: WorkKey(sourceID: result.source.id, workID: work.id), summary: work)) {
@@ -421,6 +421,8 @@ struct SourceSearchView: View {
     @State private var searchedText: String?
     @State private var showingFilters = false
     @AppStorage(SearchLayout.key) private var layout: SearchLayout = .list
+    /// A work tapped in the cover grid.
+    @State private var opened: WorkRoute?
 
     /// Browse lists show until there's something typed or searched.
     private var showingListings: Bool {
@@ -460,7 +462,7 @@ struct SourceSearchView: View {
                             CoverGrid.Item(
                                 route: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work),
                                 format: work.format ?? source.manifest.defaultFormat)
-                        })
+                        }) { opened = $0 }
                     } else {
                         ForEach(results) { work in
                             NavigationLink(value: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work)) {
@@ -523,6 +525,7 @@ struct SourceSearchView: View {
             FilterSheet(sourceID: source.id, filters: filters, values: values) { values = $0 }
         }
         .navigationTitle(title ?? source.manifest.name)
+        .navigationDestination(item: $opened) { WorkDetailView(route: $0) }
         .toolbar {
             if filters.isEmpty { ToolbarItem(placement: .primaryAction) { SearchLayoutMenu(layout: $layout) } }
         }

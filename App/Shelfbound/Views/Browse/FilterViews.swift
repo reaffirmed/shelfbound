@@ -435,14 +435,16 @@ struct CoverGrid: View {
     }
 
     let items: [Item]
-    var open: ((WorkRoute) -> Void)? = nil
+    /// Opens a work. A button rather than a NavigationLink, which in a List row would add
+    /// a disclosure chevron beside every tile.
+    let open: (WorkRoute) -> Void
 
     private let columns = [GridItem(.adaptive(minimum: ListingTile.width, maximum: ListingTile.width + 32), spacing: 12, alignment: .top)]
 
     var body: some View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
             ForEach(items) { item in
-                NavigationLink(value: item.route) {
+                Button { open(item.route) } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         ListingTile(work: item.route.summary, format: item.format)
                         if let caption = item.caption {
@@ -454,7 +456,7 @@ struct CoverGrid: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("work.result")
                 .contextMenu {
-                    if let open, !item.alternatives.isEmpty {
+                    if !item.alternatives.isEmpty {
                         ForEach(Array(item.alternatives.enumerated()), id: \.offset) { _, alternative in
                             Button("Open on \(alternative.0)") { open(alternative.1) }
                         }
