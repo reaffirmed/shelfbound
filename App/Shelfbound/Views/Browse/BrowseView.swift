@@ -521,12 +521,21 @@ struct SourceSearchView: View {
                     }
                     if hasMore {
                         // Scrolling to the end loads the next page. The task restarts when the
-                        // page changes, so it keeps going while this row stays on screen.
-                        HStack { Spacer(); ProgressView(); Spacer() }
-                            .listRowBackground(Color.clear)
-                            .task(id: page) {
-                                if !loading && error == nil { await run(page: page + 1) }
+                        // page changes, so it keeps going while this row stays on screen. The
+                        // load runs in its own Task: this row's task is cancelled whenever the
+                        // row scrolls away or the list redraws, and a cancelled load used to
+                        // end the paging after the first page or two.
+                        HStack {
+                            Spacer()
+                            if error != nil && page > 0 {
+                                Button("Try again") { loadNextPage(retry: true) }
+                            } else {
+                                ProgressView()
                             }
+                            Spacer()
+                        }
+                        .listRowBackground(Color.clear)
+                        .task(id: page) { loadNextPage(retry: false) }
                     }
                 }
                 // A fresh view per layout, so switching mid-search never diffs a list
@@ -694,9 +703,18 @@ struct SourceSearchView: View {
             error = nil
         } catch {
             guard mine == generation else { return }
+            // A cancelled request isn't a failure to show; the next scroll asks again.
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
             self.error = error.readable
             if let request = error.verification { verifying = request }
         }
+    }
+
+    private func loadNextPage(retry: Bool) {
+        guard hasMore, !loading, retry || error == nil else { return }
+        if retry { error = nil }
+        let next = page + 1
+        Task { await run(page: next) }
     }
 }
 
