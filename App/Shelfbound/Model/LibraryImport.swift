@@ -1,5 +1,6 @@
 import Foundation
 import LibraryKit
+import RepoKit
 import Observation
 import ShelfCore
 import SourceKit

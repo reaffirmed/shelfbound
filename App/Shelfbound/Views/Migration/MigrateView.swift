@@ -1,4 +1,5 @@
 import LibraryKit
+import RepoKit
 import ShelfCore
 import SourceKit
 import SwiftUI

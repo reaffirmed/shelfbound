@@ -504,9 +504,6 @@ struct PagedReaderScreen: View {
 
     private func load() async {
         phase = .loading
-        paragraphs = []
-        translated = nil
-        showOriginal = false
         let saved = context.savedProgress(chapterID)
         let result = await context.load(chapterID)
         if case let .loaded(.images(pages)) = result {
