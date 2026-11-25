@@ -53,10 +53,19 @@ struct LibraryView: View {
             .navigationDestination(for: LibrarySectionRoute.self) { SectionView(route: $0) }
             .navigationDestination(for: UpdatesRoute.self) { _ in UpdatesView() }
             .fullScreenCover(item: $reading) { ReaderView(request: $0) }
-            .onChange(of: model.pendingOpen) { _, key in
+            .onChange(of: model.pendingOpen, initial: true) { _, key in
                 guard let key, let record = model.record(key) else { return }
                 model.pendingOpen = nil
                 path.append(WorkRoute(key: key, summary: record.summary))
+            }
+            .onChange(of: model.pendingContinue, initial: true) { _, key in
+                guard let key, let record = model.record(key) else { return }
+                model.pendingContinue = nil
+                if let chapter = record.continueChapter {
+                    reading = ReaderRequest(key: key, chapterID: chapter.id)
+                } else {
+                    path.append(WorkRoute(key: key, summary: record.summary))
+                }
             }
         }
     }

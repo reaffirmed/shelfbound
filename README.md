@@ -88,6 +88,12 @@ On iOS 18 and later, the translate button in the text reader (or **Translate cha
 
 In the paged manga reader, the panels button in the top bar zooms to one panel at a time. Tapping the next-page side moves to the next panel, and past the last panel it turns the page. Panels are found on the device by cutting the page along its gutters, in manga order (right to left) or comic order as the work is set. Splash pages and borderless art show whole. The choice is saved per work.
 
+## iPad, Mac, Shortcuts and Siri
+
+- **iPad:** in a wide window, Library, Browse and Settings move to a sidebar. The app works in Split View, Slide Over and all four orientations. With a keyboard, the arrow keys and space turn pages in the manga reader. Cmd-R checks for new chapters, and Cmd-1, Cmd-2 and Cmd-3 switch sections (hold Cmd to see the list).
+- **Mac:** on an Apple silicon Mac, pick **My Mac (Designed for iPad)** as the run destination in Xcode. The same commands appear in a Library menu.
+- **Shortcuts and Siri:** "Continue reading in Shelfbound", "Check Shelfbound for new chapters", "How many new chapters in Shelfbound" and "Open … in Shelfbound". They also show up as actions in the Shortcuts app, where Check for New Chapters and Get New Chapter Count return a number you can use in automations.
+
 ## Content policy
 
 Shelfbound doesn't host content or list repos. Only add sources for sites whose terms allow it, and respect their rate limits and access rules.
