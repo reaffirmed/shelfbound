@@ -220,6 +220,11 @@ struct TextReaderScreen: View {
     @State private var showingChapters = false
     @State private var glossaryEntry: GlossaryEntry?
     @State private var editingHighlight: Highlight?
+    @State private var showingTranslation = false
+    @State private var paragraphs: [String] = []
+    @State private var translated: [String]?
+    @State private var translationState: TranslationState = .idle
+    @State private var showOriginal = false
 
     private var context: ReaderContext { ReaderContext(model: model, key: key) }
 
@@ -231,7 +236,10 @@ struct TextReaderScreen: View {
             if case let .loaded(content) = phase {
                 TextWebView(
                     html: html(for: content), restoreProgress: restore, glossary: glossaryTerms,
-                    highlights: context.record?.highlights(in: chapterID) ?? [], seek: $seek,
+                    highlights: context.record?.highlights(in: chapterID) ?? [],
+                    wantsParagraphs: translateTarget != nil,
+                    translation: translateTarget == nil || showOriginal ? nil : translated,
+                    seek: $seek,
                     pullToAdvance: model.settings.autoAdvance && context.neighbour(of: chapterID, 1) != nil,
                     onProgress: { value in
                         progress = value
@@ -251,6 +259,7 @@ struct TextReaderScreen: View {
                     onHighlightTap: { id in
                         editingHighlight = context.record?.highlights?.first { $0.id == id }
                     },
+                    onParagraphs: { paragraphs = $0 },
                     onNext: { go(1) })
                 .ignoresSafeArea(edges: .bottom)
             } else {
@@ -274,12 +283,52 @@ struct TextReaderScreen: View {
         .sheet(item: $glossaryEntry) { entry in
             NavigationStack { GlossaryEditor(key: key, entry: entry) }.presentationDetents([.medium])
         }
+        .modifier(ChapterTranslation(
+            workID: key.id, chapterID: chapterID, paragraphs: translateTarget == nil ? [] : paragraphs,
+            source: context.record?.settings.translateFrom, target: translateTarget,
+            translated: $translated, state: $translationState))
+        .overlay(alignment: .bottom) { translationBanner.padding(.bottom, chrome ? 150 : 24) }
+        .sheet(isPresented: $showingTranslation) {
+            NavigationStack { TranslationSettingsSheet(key: key) }.presentationDetents([.medium, .large])
+        }
         .sheet(item: $editingHighlight) { highlight in
             NavigationStack { HighlightEditor(key: key, highlight: highlight) }.presentationDetents([.medium, .large])
         }
     }
 
     private var glossaryTerms: [String] { context.record?.glossary.map(\.term) ?? [] }
+
+    private var translateTarget: String? {
+        ChapterTranslation.isAvailable ? context.record?.settings.translateTo : nil
+    }
+
+    @ViewBuilder
+    private var translationBanner: some View {
+        if let target = translateTarget {
+            Group {
+                switch translationState {
+                case .translating:
+                    Label("Translating into \(TranslationSettingsSheet.name(target))", systemImage: "translate")
+                case .done:
+                    Button {
+                        showOriginal.toggle()
+                    } label: {
+                        Label(showOriginal ? "Show translation" : "Translated on device · Show original", systemImage: "translate")
+                    }
+                case let .failed(message):
+                    Button { showingTranslation = true } label: { Label(message, systemImage: "exclamationmark.triangle") }
+                case .idle:
+                    EmptyView()
+                }
+            }
+            .font(.footnote)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.regularMaterial, in: Capsule())
+            .opacity(chrome || translationState == .translating ? 1 : 0)
+            .animation(.easeInOut(duration: 0.2), value: chrome)
+        }
+    }
 
     private func html(for content: ChapterContent) -> String {
         let chapter = context.chapter(chapterID)
@@ -306,6 +355,9 @@ struct TextReaderScreen: View {
 
     private func load() async {
         phase = .loading
+        paragraphs = []
+        translated = nil
+        showOriginal = false
         let saved = context.savedProgress(chapterID)
         restore = saved.progress
         progress = saved.progress
@@ -335,6 +387,12 @@ struct TextReaderScreen: View {
         ) {
             Button { showingChapters = true } label: { Image(systemName: "list.bullet").frame(width: 40, height: 40) }
                 .accessibilityLabel("Chapters")
+            if ChapterTranslation.isAvailable {
+                Button { showingTranslation = true } label: {
+                    Image(systemName: translateTarget == nil ? "translate" : "character.bubble.fill").frame(width: 40, height: 40)
+                }
+                .accessibilityLabel("Translate")
+            }
             Button { showingStyle = true } label: { Image(systemName: "textformat.size").frame(width: 40, height: 40) }
                 .accessibilityLabel("Text and theme")
         }
@@ -444,6 +502,9 @@ struct PagedReaderScreen: View {
 
     private func load() async {
         phase = .loading
+        paragraphs = []
+        translated = nil
+        showOriginal = false
         let saved = context.savedProgress(chapterID)
         let result = await context.load(chapterID)
         if case let .loaded(.images(pages)) = result {

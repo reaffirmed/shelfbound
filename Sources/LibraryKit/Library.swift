@@ -34,6 +34,10 @@ public struct WorkSettings: Codable, Sendable, Hashable {
     public var readerStyle: ReaderStyle?
     /// Vertical strips: this work's auto-scroll speed in points a second. Nil uses the app's.
     public var autoScrollSpeed: Double?
+    /// Text works: translate chapters on the device into this language (a BCP 47 code). Nil reads the original.
+    public var translateTo: String?
+    /// The language the work is written in, when detection guesses wrong. Nil detects it.
+    public var translateFrom: String?
 
     public init(readingMode: ReadingMode? = nil, autoDownload: Bool? = nil, skipNotes: Bool = false, preferredGroup: String? = nil) {
         self.readingMode = readingMode

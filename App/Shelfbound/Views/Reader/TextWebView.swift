@@ -13,6 +13,10 @@ struct TextWebView: UIViewRepresentable {
     let restoreProgress: Double
     let glossary: [String]
     var highlights: [Highlight] = []
+    /// Ask the page for its paragraphs, to translate them.
+    var wantsParagraphs = false
+    /// Translated paragraphs to show in place of the original; nil shows the original.
+    var translation: [String]?
     /// Set to jump to a position (0...1); cleared after use.
     @Binding var seek: Double?
     var pullToAdvance: Bool
@@ -22,6 +26,7 @@ struct TextWebView: UIViewRepresentable {
     /// A passage was selected and highlighted; the flag is true when the reader asked to add a note.
     var onHighlight: (TextSelection, Bool) -> Void = { _, _ in }
     var onHighlightTap: (UUID) -> Void = { _ in }
+    var onParagraphs: ([String]) -> Void = { _ in }
     var onNext: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -60,10 +65,12 @@ struct TextWebView: UIViewRepresentable {
             coordinator.loadedChapterHTML = chapterKey
             coordinator.pendingRestore = keep
             coordinator.appliedHighlights = []
+            coordinator.appliedTranslation = nil
+            coordinator.sentParagraphs = false
             coordinator.loaded = false
             view.loadHTMLString(html, baseURL: nil)
         } else if coordinator.loaded {
-            coordinator.syncHighlights(view)
+            coordinator.syncPage(view)
         }
         if let seek {
             coordinator.scroll(view, to: seek)
@@ -106,6 +113,8 @@ struct TextWebView: UIViewRepresentable {
         var loaded = false
         /// Highlight IDs currently marked in the page.
         var appliedHighlights: Set<UUID> = []
+        var appliedTranslation: [String]?
+        var sentParagraphs = false
         private var offsetObservation: NSKeyValueObservation?
         private var advanceArmed = true
 
@@ -156,6 +165,40 @@ struct TextWebView: UIViewRepresentable {
             }
         }
 
+        /// Brings the page in line with the view: paragraphs for translation, the
+        /// translation itself, then glossary terms and highlights over the text shown.
+        func syncPage(_ view: WKWebView) {
+            guard let parent else { return }
+            if parent.wantsParagraphs, !sentParagraphs {
+                sentParagraphs = true
+                view.evaluateJavaScript("window.__shelfParagraphs();") { [weak self] result, _ in
+                    guard let json = result as? String, let data = json.data(using: .utf8),
+                          let list = try? JSONDecoder().decode([String].self, from: data) else { return }
+                    Task { @MainActor in self?.parent?.onParagraphs(list) }
+                }
+            }
+            if parent.translation != appliedTranslation {
+                appliedTranslation = parent.translation
+                if let list = parent.translation,
+                   let data = try? JSONSerialization.data(withJSONObject: list), let json = String(data: data, encoding: .utf8) {
+                    view.evaluateJavaScript("window.__shelfTranslate(\(json));")
+                } else {
+                    view.evaluateJavaScript("window.__shelfOriginal();")
+                }
+                // Swapping the text removed the glossary underlines and highlight marks.
+                applyGlossary(view)
+                appliedHighlights = []
+            }
+            syncHighlights(view)
+        }
+
+        private func applyGlossary(_ view: WKWebView) {
+            if let terms = parent?.glossary, !terms.isEmpty,
+               let data = try? JSONSerialization.data(withJSONObject: terms), let json = String(data: data, encoding: .utf8) {
+                view.evaluateJavaScript("window.__shelfGlossary(\(json));")
+            }
+        }
+
         /// Marks new highlights and unmarks deleted ones, without reloading the page.
         func syncHighlights(_ view: WKWebView) {
             let current = parent?.highlights ?? []
@@ -181,12 +224,9 @@ struct TextWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            if let terms = parent?.glossary, !terms.isEmpty,
-               let data = try? JSONSerialization.data(withJSONObject: terms), let json = String(data: data, encoding: .utf8) {
-                webView.evaluateJavaScript("window.__shelfGlossary(\(json));")
-            }
+            applyGlossary(webView)
             loaded = true
-            syncHighlights(webView)
+            syncPage(webView)
             let p = pendingRestore
             pendingRestore = 0
             if p > 0 { scroll(webView, to: p) }

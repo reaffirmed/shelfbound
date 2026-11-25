@@ -80,6 +80,10 @@ The app uses [ZIPFoundation](https://github.com/weichsel/ZIPFoundation) (MIT) to
 
 In a fic or novel chapter, select text and choose **Highlight** or **Add Note**. Tap a highlight to edit its note, share it as a quote, or delete it. A work's page lists all its highlights under **Highlights and notes**, and **Export** shares them as Markdown. Highlights are stored with a little text either side, so they stay put if the source changes a chapter's markup, and they follow a work when it moves to another source.
 
+## On-device translation
+
+On iOS 18 and later, the translate button in the text reader (or **Translate chapters** on a work's page) translates each chapter with Apple's Translation framework. It runs on the device, and iOS asks to download a language the first time. **Show original** switches back. Translations are cached, so reopening a chapter is instant. Paragraphs lose inline formatting such as italics while translated. On iOS 17.4 and later, **Translate** next to a work's summary opens the system translation sheet.
+
 ## Content policy
 
 Shelfbound doesn't host content or list repos. Only add sources for sites whose terms allow it, and respect their rate limits and access rules.
