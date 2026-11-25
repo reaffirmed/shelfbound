@@ -1,4 +1,10 @@
 name: Shelfbound
+# Debug and Release build the sideload app (the IPA from GitHub Actions).
+# AppStore builds the App Store app: Release plus the APP_STORE flag (see AppFlavor.swift).
+configs:
+  Debug: debug
+  Release: release
+  AppStore: release
 options:
   bundleIdPrefix: app.shelfbound
   deploymentTarget:
@@ -42,11 +48,16 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_CFBundleDisplayName: Shelfbound
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.books
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         # All four on iPad, which Split View and Slide Over require.
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         # Runs on Apple silicon Macs as "Designed for iPad".
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
+      configs:
+        AppStore:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) APP_STORE"
     entitlements:
       path: Shelfbound/Resources/Shelfbound.entitlements
       properties:
@@ -55,6 +66,30 @@ targets:
       path: Shelfbound/Resources/Info.plist
       properties:
         NSSupportsLiveActivities: true
+        # Only standard HTTPS and signature checks, which are exempt from export paperwork.
+        ITSAppUsesNonExemptEncryption: false
+        # "Open in Shelfbound" from Files, Mail and other apps copies the file in.
+        LSSupportsOpeningDocumentsInPlace: false
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: EPUB book
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [org.idpf.epub-container]
+          - CFBundleTypeName: PDF document
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [com.adobe.pdf]
+          - CFBundleTypeName: Comic book archive
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Owner
+            LSItemContentTypes: [app.shelfbound.cbz]
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: app.shelfbound.cbz
+            UTTypeDescription: Comic book archive
+            UTTypeConformsTo: [public.zip-archive, public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [cbz]
+              public.mime-type: [application/vnd.comicbook+zip, application/x-cbz]
         CFBundleURLTypes:
           - CFBundleURLName: app.shelfbound.links
             CFBundleURLSchemes: [shelfbound]
@@ -106,3 +141,18 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: "5.0"
         TEST_TARGET_NAME: Shelfbound
+
+schemes:
+  # Archive this scheme for App Store Connect and TestFlight. See docs/app-store/README.md.
+  Shelfbound App Store:
+    build:
+      targets:
+        Shelfbound: all
+    run:
+      config: AppStore
+    profile:
+      config: AppStore
+    analyze:
+      config: AppStore
+    archive:
+      config: AppStore

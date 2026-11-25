@@ -28,7 +28,7 @@ struct AccountsView: View {
             if model.accountSources.isEmpty {
                 ContentUnavailableView(
                     "No accounts", systemImage: "person.crop.circle",
-                    description: Text("Install a source that supports signing in, such as AO3, to see it here."))
+                    description: Text("Install a source that supports signing in to see it here."))
             }
         }
         .navigationTitle("Accounts")

@@ -27,9 +27,12 @@ struct WorkDetailView: View {
     /// The source's search filters, so tags it can search by become links.
     @State private var searchFilters: [SearchFilter] = []
     @State private var tagSearch: TagSearchRoute?
+    @State private var deleting: WorkRecord?
 
     private var key: WorkKey { route.key }
     private var record: WorkRecord? { model.record(key) }
+    /// An EPUB, PDF or CBZ the person imported, rather than a work from a source.
+    private var isLocal: Bool { LocalBooks.isLocal(key) }
 
     var body: some View {
         ScrollView {
@@ -71,6 +74,7 @@ struct WorkDetailView: View {
             SourceSearchView(source: $0.source, initialValues: $0.values, title: $0.title)
         }
         .browserVerification($verifying)
+        .modifier(DeleteLocalFileDialog(record: $deleting, onDelete: { dismiss() }))
         .sheet(isPresented: $showingStyle) {
             ReaderStyleSheet(key: key).presentationDetents([.medium, .large])
         }
@@ -189,7 +193,7 @@ struct WorkDetailView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(record.chapters.isEmpty)
 
-                DownloadMenu(record: record)
+                if !isLocal { DownloadMenu(record: record) }
             }
             .controlSize(.large)
             .padding(.horizontal, 20)
@@ -513,7 +517,21 @@ struct WorkDetailView: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            if let record {
+            if let record, isLocal {
+                Menu {
+                    Button {
+                        if let last = record.readingOrder.last { model.markReadThrough(last.id, in: key) }
+                    } label: {
+                        Label("Mark all as read", systemImage: "checkmark.circle")
+                    }
+                    Button(role: .destructive) { deleting = record } label: {
+                        Label("Delete from device", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel("More")
+            } else if let record {
                 Button {
                     model.toggleLibrary(key)
                 } label: {
@@ -611,7 +629,9 @@ struct ChapterRow: View {
             Button { model.markReadThrough(chapter.id, in: record.key) } label: {
                 Label("Mark read up to here", systemImage: "checkmark.circle.badge.questionmark")
             }
-            if model.downloads.isDownloaded(ref) {
+            if LocalBooks.isLocal(record.key) {
+                // Imported files are already on the device.
+            } else if model.downloads.isDownloaded(ref) {
                 Button(role: .destructive) { Task { await model.downloadManager.delete(ref) } } label: {
                     Label("Remove download", systemImage: "trash")
                 }

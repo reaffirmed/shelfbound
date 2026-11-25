@@ -30,6 +30,10 @@ final class WalkthroughUITests: XCTestCase {
             app.tabBars.buttons["Library"].tap()
         }
 
+        step("Library: empty, offers importing files") {
+            XCTAssertTrue(app.buttons["library.importFiles"].waitForExistence(timeout: 10), "No Import files button on the empty library")
+        }
+
         step("Tab bar: Discover, Search, Library, History, Settings") {
             for tab in ["Discover", "Search", "Library", "History", "Settings"] {
                 XCTAssertTrue(app.tabBars.buttons[tab].exists, "No \(tab) tab")
