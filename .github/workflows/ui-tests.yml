@@ -99,10 +99,12 @@ jobs:
                       name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
                       name = name.split("_0_")[0]
                       ext = os.path.splitext(a["exportedFileName"])[1]
+                      if not ext or not os.path.isfile(src):
+                          continue
                       if name.endswith(ext):
                           name = name[: -len(ext)]
                       name = "".join("-" if c in '/\\":<>|*?\r\n' else c for c in name).strip()
-                      if os.path.exists(src):
+                      if name:
                           os.rename(src, os.path.join(out, name + ext))
           PY
             ls "$RUNNER_TEMP/out/screenshots"

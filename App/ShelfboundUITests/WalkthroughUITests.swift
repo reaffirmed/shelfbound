@@ -83,7 +83,7 @@ final class WalkthroughUITests: XCTestCase {
         step("Search results merged") {
             let merged = app.segmentedControls.buttons["Merged"]
             if merged.exists { merged.tap(); sleep(1) }
-            if app.buttons["Cancel"].exists { app.buttons["Cancel"].tap() }
+            endSearch()
         }
 
         sourceFlow(name: "WeebCentral", matching: "weeb", query: "solo leveling", prefix: "Manga")
@@ -101,7 +101,7 @@ final class WalkthroughUITests: XCTestCase {
         step("\(name): source search") {
             app.tabBars.buttons["Browse"].tap()
             popToRoot()
-            let row = app.buttons.matching(sourceRow(matching, other)).firstMatch
+            let row = app.buttons.matching(identifier: "browse.source").matching(sourceRow(matching, other)).firstMatch
             XCTAssertTrue(row.waitForExistence(timeout: 10), "\(name) not in installed sources")
             row.tap()
             XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 10))
@@ -228,6 +228,17 @@ final class WalkthroughUITests: XCTestCase {
             app.buttons[label].tap()
             return
         }
+    }
+
+    /// Clears and closes the search field ("Cancel" before iOS 26, "Close" after).
+    private func endSearch() {
+        let clear = app.searchFields.firstMatch.buttons["Clear text"]
+        if clear.exists { clear.tap() }
+        for label in ["Cancel", "Close"] {
+            let button = app.navigationBars.buttons[label]
+            if button.exists { button.tap(); break }
+        }
+        sleep(1)
     }
 
     private func dismissSystemAlerts() {
