@@ -30,13 +30,16 @@ final class WalkthroughUITests: XCTestCase {
             app.tabBars.buttons["Library"].tap()
         }
 
-        step("Browse") {
-            app.tabBars.buttons["Browse"].tap()
-            XCTAssertTrue(app.navigationBars["Browse"].waitForExistence(timeout: 10))
+        step("Tab bar: Discover, Search, Library, History, Settings") {
+            for tab in ["Discover", "Search", "Library", "History", "Settings"] {
+                XCTAssertTrue(app.tabBars.buttons[tab].exists, "No \(tab) tab")
+            }
+            app.tabBars.buttons["Discover"].tap()
+            XCTAssertTrue(app.navigationBars["Discover"].waitForExistence(timeout: 10))
         }
 
         step("Add repository: check") {
-            tapFirst([app.navigationBars["Browse"].buttons["Add repository"], app.buttons["Add Repository…"]])
+            tapFirst([app.navigationBars["Discover"].buttons["Add repository"], app.buttons["Add Repository…"]])
             let field = app.textFields.firstMatch
             XCTAssertTrue(field.waitForExistence(timeout: 10), "No URL field")
             field.tap()
@@ -51,12 +54,12 @@ final class WalkthroughUITests: XCTestCase {
             let add = app.collectionViews.buttons["Add repository"]
             if !add.exists { app.swipeUp() }
             tapFirst([add])
-            XCTAssertTrue(app.navigationBars["Browse"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.navigationBars["Discover"].waitForExistence(timeout: 10))
         }
 
         step("Repository sources") {
             let row = app.buttons.matching(identifier: "browse.repo").firstMatch
-            XCTAssertTrue(row.waitForExistence(timeout: 15), "Repository not listed in Browse")
+            XCTAssertTrue(row.waitForExistence(timeout: 15), "Repository not listed in Discover")
             row.tap()
             XCTAssertTrue(app.buttons["Install"].waitForExistence(timeout: 30), "No installable sources")
         }
@@ -101,24 +104,29 @@ final class WalkthroughUITests: XCTestCase {
             XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'Restore from backup'")).firstMatch.exists, "No restore row")
         }
 
-        step("Browse with sources installed") {
-            app.tabBars.buttons["Browse"].tap()
-            popToRoot()
+        step("Discover with sources installed") {
+            app.tabBars.buttons["Discover"].tap()
+            popToRoot("Discover")
             sleep(8) // Discover rows load from the sources
         }
 
-        step("Browse scrolled") {
+        step("Discover scrolled") {
             drag(from: 0.85, to: 0.15)
             drag(from: 0.85, to: 0.15)
             sleep(2)
         }
-        // Back to the top, where the search field is.
-        for _ in 0..<4 where !(app.searchFields.firstMatch.exists && app.searchFields.firstMatch.isHittable) { drag(from: 0.25, to: 0.9) }
+
+        step("Search tab") {
+            app.tabBars.buttons["Search"].tap()
+            popToRoot()
+            XCTAssertTrue(app.navigationBars["Search"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.buttons.matching(identifier: "browse.source").firstMatch.waitForExistence(timeout: 10),
+                          "Search tab doesn't list sources")
+        }
 
         step("Search all sources") {
-            app.tabBars.buttons["Browse"].tap()
+            app.tabBars.buttons["Search"].tap()
             popToRoot()
-            XCTAssertTrue(app.navigationBars["Browse"].waitForExistence(timeout: 10))
             let search = app.searchFields.firstMatch
             XCTAssertTrue(search.waitForExistence(timeout: 10))
             search.tap()
@@ -148,13 +156,19 @@ final class WalkthroughUITests: XCTestCase {
             app.tabBars.buttons["Library"].tap()
             sleep(2)
         }
+
+        step("History") {
+            app.tabBars.buttons["History"].tap()
+            XCTAssertTrue(app.navigationBars["History"].waitForExistence(timeout: 10))
+            sleep(2)
+        }
     }
 
     // MARK: Flows
 
     private func sourceFlow(name: String, matching: String, or other: String? = nil, query: String, prefix: String, network: Bool = true) {
         step("\(name): source page before searching") {
-            app.tabBars.buttons["Browse"].tap()
+            app.tabBars.buttons["Search"].tap()
             popToRoot()
             let row = app.buttons.matching(identifier: "browse.source").matching(sourceRow(matching, other)).firstMatch
             // Discover rows can push the Sources section below the fold.
@@ -368,8 +382,8 @@ final class WalkthroughUITests: XCTestCase {
         sleep(1)
     }
 
-    private func popToRoot() {
-        for _ in 0..<5 where !app.navigationBars["Browse"].exists { goBack() }
+    private func popToRoot(_ title: String = "Search") {
+        for _ in 0..<5 where !app.navigationBars[title].exists { goBack() }
         if app.searchFields.firstMatch.exists, (app.searchFields.firstMatch.value as? String)?.isEmpty == false { endSearch() }
     }
 

@@ -4,10 +4,15 @@ import ShelfCore
 import SourceKit
 import SwiftUI
 
-/// Sources and repos, with search across every installed source.
+/// The Discover and Search tabs. Discover shows each source's browse lists, the
+/// installed sources and the repositories they come from. Search looks through every
+/// installed source at once, or one source with its filters.
 @MainActor
 struct BrowseView: View {
+    enum Mode { case discover, search }
+
     @Environment(AppModel.self) private var model
+    var mode: Mode = .discover
     @State private var query = ""
     @State private var results: [(source: InstalledSource, page: SearchPage?, error: String?, verify: VerificationRequest?)] = []
     @State private var searching = false
@@ -24,19 +29,20 @@ struct BrowseView: View {
     var body: some View {
         NavigationStack(path: $path) {
             List {
-                if !results.isEmpty || searching {
-                    searchResults
-                } else {
-                    // Sources first, so a source is one tap away; the browse rows follow.
-                    sources
+                switch mode {
+                case .search:
+                    if !results.isEmpty || searching { searchResults } else { sources }
+                case .discover:
+                    // The browse rows first, like a storefront; sources and repos follow.
                     ForEach(discover) { item in
                         ListingSection(source: item.source, listing: item.listing, showSourceName: true, refreshToken: discoverToken)
                     }
+                    sources
                     repositories
                 }
             }
-            .navigationTitle("Browse")
-            .searchable(text: $query, prompt: "Search all sources")
+            .navigationTitle(mode == .search ? "Search" : "Discover")
+            .modifier(SearchAllField(enabled: mode == .search, query: $query))
             .onSubmit(of: .search) { Task { await searchAll() } }
             .onChange(of: query) { _, value in
                 if value.isEmpty {
@@ -49,9 +55,11 @@ struct BrowseView: View {
                 if results.contains(where: { $0.verify != nil }) { Task { await searchAll() } }
             }
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { addingRepo = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("Add repository")
+                if mode == .discover {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { addingRepo = true } label: { Image(systemName: "plus") }
+                            .accessibilityLabel("Add repository")
+                    }
                 }
             }
             .sheet(isPresented: $addingRepo) { NavigationStack { AddRepoView() } }
@@ -59,8 +67,8 @@ struct BrowseView: View {
                 await model.refreshRepos()
                 discoverToken += 1
             }
-            .task { await model.refreshRepos() }
-            .task(id: model.searchableSources.map(\.id)) { await loadDiscover() }
+            .task { if mode == .discover { await model.refreshRepos() } }
+            .task(id: model.searchableSources.map(\.id)) { if mode == .discover { await loadDiscover() } }
             .navigationDestination(for: InstalledSource.self) { SourceSearchView(source: $0) }
             .navigationDestination(for: SavedRepo.self) { RepoDetailView(repo: $0) }
             .navigationDestination(for: WorkRoute.self) { WorkDetailView(route: $0) }
@@ -105,9 +113,11 @@ struct BrowseView: View {
                 .accessibilityIdentifier("browse.source")
             }
         } header: {
-            Text("Sources")
+            Text(mode == .search ? "Search one source" : "Sources")
         } footer: {
-            Text("Fics, manga and manhwa all show up in one library, whichever source they come from.")
+            Text(mode == .search
+                 ? "Type above to search every source at once, or pick one to search it with all of its filters."
+                 : "Fics, manga and manhwa all show up in one library, whichever source they come from.")
         }
     }
 
@@ -337,6 +347,20 @@ struct DiscoverItem: Identifiable {
     let source: InstalledSource
     let listing: SourceListing
     var id: String { source.id + "/" + listing.id }
+}
+
+/// The search field, only on the Search tab.
+private struct SearchAllField: ViewModifier {
+    let enabled: Bool
+    @Binding var query: String
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search all sources")
+        } else {
+            content
+        }
+    }
 }
 
 /// Search one source, with its filters as chips. Before you search, it shows the

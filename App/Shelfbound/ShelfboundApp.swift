@@ -75,8 +75,29 @@ struct ShelfboundApp: App {
     }
 }
 
-enum AppTab: Hashable {
-    case library, browse, settings
+/// The tabs, in the order they show: Discover, Search, Library, History, Settings.
+enum AppTab: Hashable, CaseIterable {
+    case discover, search, library, history, settings
+
+    var title: String {
+        switch self {
+        case .discover: "Discover"
+        case .search: "Search"
+        case .library: "Library"
+        case .history: "History"
+        case .settings: "Settings"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .discover: "book"
+        case .search: "magnifyingglass"
+        case .library: "bookmark"
+        case .history: "clock"
+        case .settings: "gearshape"
+        }
+    }
 }
 
 /// Tabs on iPhone and in compact iPad windows; a sidebar when the window is wide
@@ -113,34 +134,38 @@ struct RootView: View {
     private var tabs: some View {
         @Bindable var model = model
         return TabView(selection: $model.selectedTab) {
-            LibraryView()
-                .tabItem { Label("Library", systemImage: "books.vertical") }
-                .tag(AppTab.library)
-                .badge(badge)
-            BrowseView()
-                .tabItem { Label("Browse", systemImage: "safari") }
-                .tag(AppTab.browse)
-            SettingsView(showBrowse: { model.selectedTab = .browse })
-                .tabItem { Label("Settings", systemImage: "gearshape") }
-                .tag(AppTab.settings)
+            ForEach(AppTab.allCases, id: \.self) { tab in
+                screen(for: tab)
+                    .tabItem { Label(tab.title, systemImage: tab.systemImage) }
+                    .tag(tab)
+                    .badge(tab == .library ? badge : 0)
+            }
+        }
+        .tint(Color.shelfAccent)
+    }
+
+    @ViewBuilder
+    private func screen(for tab: AppTab) -> some View {
+        switch tab {
+        case .discover: BrowseView(mode: .discover)
+        case .search: BrowseView(mode: .search)
+        case .library: LibraryView()
+        case .history: HistoryView()
+        case .settings: SettingsView(showBrowse: { model.selectedTab = .discover })
         }
     }
 
     private var sidebar: some View {
         NavigationSplitView {
             List(selection: Binding<AppTab?>(get: { model.selectedTab }, set: { if let tab = $0 { model.selectedTab = tab } })) {
-                Label("Library", systemImage: "books.vertical").badge(badge).tag(AppTab.library)
-                Label("Browse", systemImage: "safari").tag(AppTab.browse)
-                Label("Settings", systemImage: "gearshape").tag(AppTab.settings)
+                ForEach(AppTab.allCases, id: \.self) { tab in
+                    Label(tab.title, systemImage: tab.systemImage).badge(tab == .library ? badge : 0).tag(tab)
+                }
             }
             .navigationTitle("Shelfbound")
             .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 280)
         } detail: {
-            switch model.selectedTab {
-            case .library: LibraryView()
-            case .browse: BrowseView()
-            case .settings: SettingsView(showBrowse: { model.selectedTab = .browse })
-            }
+            screen(for: model.selectedTab)
         }
     }
 }
@@ -154,9 +179,11 @@ struct ShelfboundCommands: Commands {
             Button("Check for New Chapters") { Task { await model.checkForUpdates() } }
                 .keyboardShortcut("r")
             Divider()
-            Button("Library") { model.selectedTab = .library }.keyboardShortcut("1")
-            Button("Browse") { model.selectedTab = .browse }.keyboardShortcut("2")
-            Button("Settings") { model.selectedTab = .settings }.keyboardShortcut("3")
+            Button("Discover") { model.selectedTab = .discover }.keyboardShortcut("1")
+            Button("Search") { model.selectedTab = .search }.keyboardShortcut("2")
+            Button("Library") { model.selectedTab = .library }.keyboardShortcut("3")
+            Button("History") { model.selectedTab = .history }.keyboardShortcut("4")
+            Button("Settings") { model.selectedTab = .settings }.keyboardShortcut("5")
         }
     }
 }
