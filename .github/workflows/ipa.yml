@@ -4,6 +4,11 @@ name: Build IPA
 # which re-sign it with your own Apple ID on install.
 on:
   workflow_dispatch:
+    inputs:
+      release:
+        description: Also publish a versioned release with this tag, like v0.2.0 (leave empty for just the latest build)
+        required: false
+        default: ''
   push:
     branches: ['claude/**']
     paths-ignore: ['**.md', 'examples/**', 'sdk/**']
@@ -80,6 +85,16 @@ jobs:
               --notes "Unsigned IPA of the newest build. Install with AltStore or Sideloadly."
           gh release upload latest-build Shelfbound.ipa --clobber
           gh release edit latest-build --notes "Unsigned IPA built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Install with AltStore or Sideloadly."
+
+      # Run the workflow by hand with a tag to cut a proper release from the chosen branch.
+      - name: Publish a versioned release
+        if: github.event_name == 'workflow_dispatch' && inputs.release != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release }}
+        run: |
+          gh release create "$TAG" Shelfbound.ipa --target "$GITHUB_SHA" \
+            --title "Shelfbound $TAG" --generate-notes
 
       - uses: actions/upload-artifact@v4
         if: failure()
