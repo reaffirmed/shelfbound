@@ -15,8 +15,9 @@ struct ListingSection: View {
     @Environment(AppModel.self) private var model
     let source: InstalledSource
     let listing: SourceListing
-    /// On the Browse tab the source's name goes under the title, so mixed rows stay clear.
-    var showSourceName = false
+    /// On Discover, the first row of each source carries the source's name above it, so
+    /// the rows read as one group per source.
+    var sourceHeading = false
     /// Bumped by pull to refresh, which refetches instead of using the cached page.
     var refreshToken = 0
 
@@ -39,6 +40,20 @@ struct ListingSection: View {
     }
 
     private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if sourceHeading {
+                HStack(spacing: 8) {
+                    SourceIcon(name: source.manifest.name, size: 26)
+                    Text(source.manifest.name).font(.title2.weight(.bold)).foregroundStyle(Color(.label))
+                }
+                .padding(.top, 12)
+            }
+            listingTitle
+        }
+        .textCase(nil)
+    }
+
+    private var listingTitle: some View {
         HStack(alignment: .lastTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(listing.title)
@@ -59,10 +74,7 @@ struct ListingSection: View {
         .padding(.top, 8)
     }
 
-    private var subtitle: String? {
-        let parts = [showSourceName ? source.manifest.name : nil, listing.subtitle].compactMap { $0 }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
+    private var subtitle: String? { listing.subtitle }
 
     @ViewBuilder
     private var row: some View {
@@ -134,15 +146,7 @@ struct ListingTile: View {
             CoverView(
                 title: work.title, author: work.authors.first ?? "", format: format, url: work.coverURL,
                 words: work.wordCount, chapters: work.chapterCount)
-            Text(work.title)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(2, reservesSpace: true)
-                .multilineTextAlignment(.leading)
-            Text(meta)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            TileText(title: work.title, caption: meta)
         }
         .frame(width: Self.width, alignment: .topLeading)
         .contentShape(Rectangle())
@@ -229,6 +233,35 @@ struct ListingView: View {
         } catch {
             self.error = error.readable
             if let request = error.verification { verifying = request }
+        }
+    }
+}
+
+/// A tile's title with its caption right under it. The space for a second title line is
+/// kept below the caption, not between them, so tiles in a row still line up.
+struct TileText: View {
+    let title: String
+    let caption: String
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            lines(Text("X\nX"), Text("X")).hidden()
+            lines(Text(title), Text(caption))
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func lines(_ title: Text, _ caption: Text) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            title
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+            caption
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
     }
 }

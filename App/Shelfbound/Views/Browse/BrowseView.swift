@@ -35,14 +35,20 @@ struct BrowseView: View {
                     if !results.isEmpty || searching { searchResults } else { sources }
                 case .discover:
                     // The browse rows first, like a storefront; sources and repos follow.
-                    ForEach(discover) { item in
-                        ListingSection(source: item.source, listing: item.listing, showSourceName: true, refreshToken: discoverToken)
+                    // Grouped by source: its name heads its first row, then each list's title.
+                    ForEach(Array(discover.enumerated()), id: \.element.id) { index, item in
+                        ListingSection(
+                            source: item.source, listing: item.listing,
+                            sourceHeading: index == 0 || discover[index - 1].source.id != item.source.id,
+                            refreshToken: discoverToken)
                     }
                     sources
                     repositories
                 }
             }
             .navigationTitle(mode == .search ? "Search" : "Discover")
+            .listSectionSpacing(mode == .search ? .compact : .default)
+            .contentMargins(.top, mode == .search ? 4 : nil, for: .scrollContent)
             .modifier(SearchAllField(enabled: mode == .search, query: $query))
             .onSubmit(of: .search) { Task { await searchAll() } }
             .onChange(of: query) { _, value in
@@ -167,9 +173,16 @@ struct BrowseView: View {
 
     @ViewBuilder
     private var searchResults: some View {
-        if searching && results.isEmpty {
-            HStack { Spacer(); ProgressView(); Spacer() }
+        if mergeResults && results.count > 1 {
+            mergedResults
+        } else {
+            resultsBySource
         }
+    }
+
+    /// Merged / By source and the layout switch. They sit in the first section's header,
+    /// not a row of their own, so there's no empty band between them and the search field.
+    private var resultControls: some View {
         HStack(spacing: 10) {
             if results.count > 1 {
                 Picker("Show", selection: $mergeResults) {
@@ -182,13 +195,8 @@ struct BrowseView: View {
             }
             SearchLayoutToggle(layout: $layout)
         }
-        .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets())
-        if mergeResults && results.count > 1 {
-            mergedResults
-        } else {
-            resultsBySource
-        }
+        .textCase(nil)
+        .padding(.bottom, 8)
     }
 
     private func route(_ hit: MergedResult.Hit) -> WorkRoute { WorkRoute(key: hit.key, summary: hit.work) }
@@ -229,6 +237,8 @@ struct BrowseView: View {
                 }
             }
             if searching { HStack { Spacer(); ProgressView(); Spacer() } }
+        } header: {
+            resultControls
         } footer: {
             if merged.contains(where: { !$0.others.isEmpty }) {
                 Text("Works on several sources show once. Touch and hold one to open it on another source.")
@@ -261,7 +271,7 @@ struct BrowseView: View {
 
     @ViewBuilder
     private var resultsBySource: some View {
-        ForEach(results, id: \.source.id) { result in
+        ForEach(Array(results.enumerated()), id: \.element.source.id) { index, result in
             Section {
                 if let error = result.error {
                     Text(error).font(.footnote).foregroundStyle(.secondary)
@@ -290,7 +300,10 @@ struct BrowseView: View {
                     ProgressView()
                 }
             } header: {
-                Text(result.source.manifest.name)
+                VStack(alignment: .leading, spacing: 0) {
+                    if index == 0 { resultControls }
+                    Text(result.source.manifest.name)
+                }
             }
         }
     }
@@ -343,6 +356,10 @@ struct WorkCard: View {
         HStack(alignment: .top, spacing: 12) {
             if !format.isText || work.coverURL != nil {
                 CoverView(title: work.title, format: format, url: work.coverURL, compact: true).frame(width: Self.coverWidth)
+            } else {
+                // No cover (most fics): a small tile with the fandom's initials keeps the
+                // text in line with the rows that have one.
+                InitialsTile(text: work.fandoms?.first ?? work.title).frame(width: Self.coverWidth)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(work.title).font(.headline).lineLimit(2)
@@ -670,5 +687,28 @@ struct FilterChip: View {
     /// replaces the old one at once instead of the chip sliding to its new width.
     private func chip(_ text: String, on: Bool) -> some View {
         FilterChipLabel(text: text, on: on)
+    }
+}
+
+/// A colored square with a fandom's (or title's) initials, for results with no cover.
+struct InitialsTile: View {
+    let text: String
+
+    /// "Harry Potter - J. K. Rowling" names the fandom by its first part.
+    private var name: String {
+        let cut = text.components(separatedBy: " - ").first ?? text
+        return (cut.components(separatedBy: " (").first ?? cut).trimmingCharacters(in: .whitespaces)
+    }
+
+    var body: some View {
+        let hue = Hue.of(name)
+        Text(name.monogram)
+            .font(.system(.title2, design: .rounded, weight: .bold))
+            .foregroundStyle(Color(hue: hue, saturation: 0.55, brightness: 0.32))
+            .frame(maxWidth: .infinity)
+            .aspectRatio(1, contentMode: .fit)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(hue: hue, saturation: 0.3, brightness: 0.92)))
+            .accessibilityHidden(true)
     }
 }

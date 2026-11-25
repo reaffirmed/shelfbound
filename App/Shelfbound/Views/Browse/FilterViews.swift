@@ -451,13 +451,7 @@ struct CoverGrid: View {
                         CoverView(
                             title: work.title, author: work.authors.first ?? "", format: item.format, url: work.coverURL,
                             words: work.wordCount, chapters: work.chapterCount)
-                        Text(work.title)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(2, reservesSpace: true)
-                            .multilineTextAlignment(.leading)
-                        Text(item.caption ?? work.authors.first ?? work.fandoms?.first ?? item.format.label)
-                            .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        TileText(title: work.title, caption: item.caption ?? work.authors.first ?? work.fandoms?.first ?? item.format.label)
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .contentShape(Rectangle())
