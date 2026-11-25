@@ -189,6 +189,5 @@ final class SourceRuntimeTests: XCTestCase {
         let none = try await plain.suggest(filterID: "tag", text: "x")
         XCTAssertTrue(none.isEmpty)
     }
-    }
 }
 #endif
