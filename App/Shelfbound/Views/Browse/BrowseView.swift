@@ -12,9 +12,11 @@ struct BrowseView: View {
     @State private var results: [(source: InstalledSource, page: SearchPage?, error: String?, verify: VerificationRequest?)] = []
     @State private var searching = false
     @State private var addingRepo = false
+    @State private var path = NavigationPath()
+    @AppStorage("browse.mergeResults") private var mergeResults = true
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 if !results.isEmpty || searching {
                     searchResults
@@ -122,6 +124,83 @@ struct BrowseView: View {
         if searching && results.isEmpty {
             HStack { Spacer(); ProgressView(); Spacer() }
         }
+        if results.count > 1 {
+            Picker("Show", selection: $mergeResults) {
+                Text("Merged").tag(true)
+                Text("By source").tag(false)
+            }
+            .pickerStyle(.segmented)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
+        }
+        if mergeResults && results.count > 1 {
+            mergedResults
+        } else {
+            resultsBySource
+        }
+    }
+
+    private func route(_ hit: MergedResult.Hit) -> WorkRoute { WorkRoute(key: hit.key, summary: hit.work) }
+
+    /// One list across sources, the same work shown once. Long-press to open it on another source.
+    @ViewBuilder
+    private var mergedResults: some View {
+        let merged = SearchMerger.merge(
+            results.compactMap { result in result.page.map { (sourceID: result.source.id, results: $0.results) } },
+            preferred: preferredSources)
+        Section {
+            if merged.isEmpty && !searching {
+                Text("No results").font(.footnote).foregroundStyle(.secondary)
+            }
+            ForEach(merged) { result in
+                NavigationLink(value: route(result.primary)) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        WorkCard(work: result.primary.work, format: result.primary.work.format ?? format(of: result.primary.sourceID))
+                        Text(result.others.isEmpty
+                             ? model.sourceName(result.primary.sourceID)
+                             : "\(model.sourceName(result.primary.sourceID)), also on \(result.others.map { model.sourceName($0.sourceID) }.joined(separator: ", "))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .contextMenu {
+                    ForEach(result.all, id: \.key) { hit in
+                        Button("Open on \(model.sourceName(hit.sourceID))") { path.append(route(hit)) }
+                    }
+                }
+            }
+            if searching { HStack { Spacer(); ProgressView(); Spacer() } }
+        } footer: {
+            if merged.contains(where: { !$0.others.isEmpty }) {
+                Text("Works on several sources show once. Touch and hold one to open it on another source.")
+            }
+        }
+        let failed = results.filter { $0.error != nil }
+        if !failed.isEmpty {
+            Section("Couldn't search") {
+                ForEach(failed, id: \.source.id) { result in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(result.source.manifest.name).font(.subheadline.weight(.semibold))
+                        Text(result.error ?? "").font(.footnote).foregroundStyle(.secondary)
+                        if let verify = result.verify { VerifyInBrowserButton(request: verify) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Sources the person reads most from open merged results first.
+    private var preferredSources: [String] {
+        var counts: [String: Int] = [:]
+        for record in model.library.library { counts[record.key.sourceID, default: 0] += 1 }
+        return counts.sorted { $0.value > $1.value }.map(\.key)
+    }
+
+    private func format(of sourceID: String) -> WorkFormat {
+        model.manifest(for: sourceID)?.defaultFormat ?? .fic
+    }
+
+    @ViewBuilder
+    private var resultsBySource: some View {
         ForEach(results, id: \.source.id) { result in
             Section {
                 if let error = result.error {
