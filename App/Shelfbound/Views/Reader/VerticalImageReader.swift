@@ -272,13 +272,18 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
     }
 
     /// When an image's real size arrives, resize its cell without making the page jump.
+    /// It compares against the cell's laid-out height, not a remembered aspect: the loader
+    /// records the real aspect before this runs, so comparing aspects found no change and
+    /// left tall manhwa strips squeezed into the 1.4 guess.
     private func learned(aspect: CGFloat, for url: URL, at indexPath: IndexPath) {
-        let old = aspects[url] ?? ImageLoader.shared.knownAspect(url) ?? 1.4
         aspects[url] = aspect
-        guard abs(old - aspect) > 0.001, indexPath.section < chapters.count else { return }
+        guard indexPath.section < chapters.count,
+              indexPath.item < chapters[indexPath.section].pages.count,
+              chapters[indexPath.section].pages[indexPath.item].url == url,
+              let frame = collectionView.layoutAttributesForItem(at: indexPath)?.frame else { return }
         let width = collectionView.bounds.width
-        let delta = (aspect - old) * width
-        let frame = collectionView.layoutAttributesForItem(at: indexPath)?.frame ?? .zero
+        let delta = max(1, (width * aspect).rounded()) - frame.height
+        guard abs(delta) > 0.5 else { return }
         let above = frame.maxY <= collectionView.contentOffset.y + 1
         UIView.performWithoutAnimation {
             let context = UICollectionViewFlowLayoutInvalidationContext()
@@ -299,7 +304,8 @@ final class StripCell: UICollectionViewCell {
     override init(frame: CGRect) {
         super.init(frame: frame)
         contentView.backgroundColor = .black
-        imageView.contentMode = .scaleToFill
+        // Never stretch: if a cell's height is ever off, the page shows letterboxed, not squashed.
+        imageView.contentMode = .scaleAspectFit
         imageView.frame = contentView.bounds
         imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         contentView.addSubview(imageView)
@@ -326,6 +332,9 @@ final class StripCell: UICollectionViewCell {
         if let hit = ImageLoader.shared.cached(page, width: width) {
             imageView.image = hit
             spinner.stopAnimating()
+            let aspect = ImageLoader.shared.knownAspect(page.url) ?? hit.size.height / max(hit.size.width, 1)
+            // Sizes the cell if it was laid out before the image's shape was known.
+            DispatchQueue.main.async { learned(aspect) }
             return
         }
         spinner.startAnimating()
