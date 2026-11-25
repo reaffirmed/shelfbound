@@ -20,10 +20,14 @@ targets:
         product: SourceKit
       - package: ShelfKit
         product: RepoKit
+      - package: ShelfKit
+        product: LibraryKit
+      - package: ShelfKit
+        product: DownloadKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.shelfbound.Shelfbound
-        MARKETING_VERSION: "0.1.0"
+        MARKETING_VERSION: "0.2.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -37,3 +41,7 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: app.shelfbound.links
             CFBundleURLSchemes: [shelfbound]
+        UIBackgroundModes: [fetch, processing]
+        BGTaskSchedulerPermittedIdentifiers:
+          - app.shelfbound.Shelfbound.refresh
+          - app.shelfbound.Shelfbound.catchup

@@ -30,10 +30,14 @@ public final class SourceRuntime: @unchecked Sendable {
     private var nextCallID = 0
     private var lastException: String?
     private var isClosed = false
+    private var optionalFunctions: Set<String> = []
+    /// Set when a fetch hit a bot check, or the source said a host needs one. The call
+    /// that's running then fails with `BrowserVerificationNeeded`, whatever the script threw.
+    private var verificationNeeded: BrowserVerificationNeeded?
 
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
+        d.dateDecodingStrategy = .custom(SourceDates.decode)
         return d
     }()
 
@@ -66,9 +70,24 @@ public final class SourceRuntime: @unchecked Sendable {
 
     // MARK: - Source API
 
-    public func search(query: String, page: Int = 1) async throws -> SearchPage {
-        try await invoke("search", [query, page])
+    public func search(query: String, page: Int = 1, filters: [String: [String]] = [:]) async throws -> SearchPage {
+        try await invoke("search", [query, page, filters])
     }
+
+    /// Filters from the optional `getFilters()`. Empty when the source has none.
+    public func getFilters() async throws -> [SearchFilter] {
+        guard implements("getFilters") else { return [] }
+        return try await invoke("getFilters", [])
+    }
+
+    /// Reads a chapter link another source handed over. Needs the "links" capability.
+    public func resolveLink(_ url: URL) async throws -> ChapterContent {
+        guard implements("resolveLink") else { throw SourceError.missingFunction("resolveLink") }
+        return try await invoke("resolveLink", [url.absoluteString])
+    }
+
+    /// Whether the script defines an optional function.
+    public func implements(_ function: String) -> Bool { optionalFunctions.contains(function) }
 
     public func getWork(id: String) async throws -> Work {
         try await invoke("getWork", [id])
@@ -131,7 +150,13 @@ public final class SourceRuntime: @unchecked Sendable {
     /// Must run on `queue`.
     private func finish(_ id: Int, _ result: Result<String, Error>) {
         guard let continuation = calls.removeValue(forKey: id) else { return }
-        continuation.resume(with: result)
+        let verification = verificationNeeded
+        verificationNeeded = nil
+        if case .failure = result, let verification {
+            continuation.resume(throwing: verification)
+        } else {
+            continuation.resume(with: result)
+        }
     }
 
     // MARK: - Setup
@@ -183,7 +208,13 @@ public final class SourceRuntime: @unchecked Sendable {
         native.setObject(unsafeBitCast(select, to: AnyObject.self), forKeyedSubscript: "select" as NSString)
         native.setObject(unsafeBitCast(log, to: AnyObject.self), forKeyedSubscript: "log" as NSString)
         native.setObject(unsafeBitCast(setting, to: AnyObject.self), forKeyedSubscript: "setting" as NSString)
+        let verify: @convention(block) (JSValue) -> Void = { [weak self] value in
+            guard let self, let url = URL(string: value.toString() ?? ""), url.scheme == "https", self.policy.allows(url) else { return }
+            self.verificationNeeded = BrowserVerificationNeeded(url: url)
+        }
+
         native.setObject(unsafeBitCast(done, to: AnyObject.self), forKeyedSubscript: "done" as NSString)
+        native.setObject(unsafeBitCast(verify, to: AnyObject.self), forKeyedSubscript: "verify" as NSString)
         context.setObject(native, forKeyedSubscript: "__native" as NSString)
 
         context.evaluateScript(Prelude.script, withSourceURL: URL(string: "shelfbound://prelude.js"))
@@ -205,6 +236,11 @@ public final class SourceRuntime: @unchecked Sendable {
                 throw SourceError.missingFunction(name)
             }
         }
+        for name in ["getFilters", "resolveLink", "getLatest"] {
+            if let fn = source.objectForKeyedSubscript(name), !fn.isUndefined, !fn.isNull {
+                optionalFunctions.insert(name)
+            }
+        }
     }
 
     // MARK: - Host functions
@@ -212,8 +248,9 @@ public final class SourceRuntime: @unchecked Sendable {
     /// Called on `queue` from JavaScript.
     private func handleFetch(id: Int, json: String?) {
         let request: URLRequest
+        let options: FetchOptions
         do {
-            request = try makeRequest(json)
+            (request, options) = try makeRequest(json)
         } catch {
             resolveFetch(id: id, ok: false, payload: error.localizedDescription)
             return
@@ -222,17 +259,21 @@ public final class SourceRuntime: @unchecked Sendable {
         let sourceID = manifest.id
         Task {
             do {
-                let response = try await network.fetch(request, sourceID: sourceID)
+                let response = try await network.fetch(request, sourceID: sourceID, options: options)
                 let payload = String(decoding: try JSONEncoder().encode(response), as: UTF8.self)
                 self.queue.async { self.resolveFetch(id: id, ok: true, payload: payload) }
             } catch {
                 let message = error.localizedDescription
-                self.queue.async { self.resolveFetch(id: id, ok: false, payload: message) }
+                let verification = error as? BrowserVerificationNeeded
+                self.queue.async {
+                    if let verification { self.verificationNeeded = verification }
+                    self.resolveFetch(id: id, ok: false, payload: message)
+                }
             }
         }
     }
 
-    private func makeRequest(_ json: String?) throws -> URLRequest {
+    private func makeRequest(_ json: String?) throws -> (URLRequest, FetchOptions) {
         guard let json, let hostRequest = try? JSONDecoder().decode(HostRequest.self, from: Data(json.utf8)) else {
             throw SourceError.badRequest("fetch needs a URL string or { url, method, headers, body }.")
         }
@@ -248,7 +289,11 @@ public final class SourceRuntime: @unchecked Sendable {
             request.setValue(value, forHTTPHeaderField: key)
         }
         request.httpBody = hostRequest.body.map { Data($0.utf8) }
-        return request
+        let policy = self.policy
+        let options = FetchOptions(
+            followRedirects: hostRequest.redirect != "manual",
+            allowRedirect: { policy.allows($0) })
+        return (request, options)
     }
 
     /// Must run on `queue`.

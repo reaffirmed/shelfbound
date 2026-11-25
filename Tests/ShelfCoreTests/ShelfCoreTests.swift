@@ -27,3 +27,32 @@ final class ShelfCoreTests: XCTestCase {
         XCTAssertTrue(ContentRating.safe < .explicit)
     }
 }
+
+final class BrowserVerificationTests: XCTestCase {
+    func testDetectsCloudflareChallenges() {
+        XCTAssertTrue(BrowserChallenge.isChallenge(status: 403, headers: ["cf-mitigated": "challenge"], body: ""))
+        XCTAssertTrue(BrowserChallenge.isChallenge(
+            status: 503, headers: ["server": "cloudflare"],
+            body: "<!DOCTYPE html><html><head><title>Just a moment...</title>"))
+        XCTAssertTrue(BrowserChallenge.isChallenge(
+            status: 403, headers: ["cf-ray": "8a1"], body: #"<script src="/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"></script>"#))
+    }
+
+    func testIgnoresOrdinaryErrorsAndPages() {
+        XCTAssertFalse(BrowserChallenge.isChallenge(status: 200, headers: ["server": "cloudflare"], body: "<title>Just a moment</title>"))
+        XCTAssertFalse(BrowserChallenge.isChallenge(status: 403, headers: ["server": "nginx"], body: "<title>Just a moment</title>"))
+        XCTAssertFalse(BrowserChallenge.isChallenge(status: 404, headers: ["server": "cloudflare"], body: "Not found"))
+        XCTAssertFalse(BrowserChallenge.isChallenge(status: 403, headers: ["server": "cloudflare"], body: "Forbidden"))
+    }
+
+    func testClearanceAppliesToSubdomainsOfTheVerifiedDomain() {
+        let store = ClearanceStore(defaults: nil)
+        store.record(host: "Example.org", userAgent: "UA-1")
+        XCTAssertEqual(store.userAgent(for: URL(string: "https://example.org/a")!), "UA-1")
+        XCTAssertEqual(store.userAgent(for: URL(string: "https://cdn.example.org/a.jpg")!), "UA-1")
+        XCTAssertNil(store.userAgent(for: URL(string: "https://org/")!))
+        XCTAssertNil(store.userAgent(for: URL(string: "https://example.com/")!))
+        store.remove(host: "example.org")
+        XCTAssertNil(store.userAgent(for: URL(string: "https://example.org/a")!))
+    }
+}

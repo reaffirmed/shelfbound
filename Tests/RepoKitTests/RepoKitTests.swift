@@ -38,7 +38,7 @@ private final class MemoryPins: KeyPinStore, @unchecked Sendable {
 final class RepoKitTests: XCTestCase {
     let indexURL = URL(string: "https://repo.example.org/index.json")!
 
-    func client(index: RepoIndex = Vector.index, package: Data = Vector.package, pins: MemoryPins = MemoryPins()) throws -> RepoClient {
+    private func client(index: RepoIndex = Vector.index, package: Data = Vector.package, pins: MemoryPins = MemoryPins()) throws -> RepoClient {
         RepoClient(
             transport: MockTransport(files: [
                 "https://repo.example.org/index.json": try JSONEncoder().encode(index),

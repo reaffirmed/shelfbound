@@ -6,6 +6,8 @@ import path from "node:path";
 const KINDS = ["text", "images"];
 const RATINGS = ["safe", "mature", "explicit"];
 const ID_RE = /^[a-z0-9]+(\.[a-z0-9-]+)+$/;
+const FORMATS = { text: ["fic", "novel"], images: ["manga", "manhwa", "manhua", "comic"] };
+const CAPABILITIES = ["filters", "links", "discovery"];
 
 export function generateKeys() {
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
@@ -31,6 +33,18 @@ export function validateManifest(m, where) {
   need("languages", Array.isArray(m.languages) && m.languages.length > 0, "must list at least one language");
   need("domains", Array.isArray(m.domains) && m.domains.length > 0 && m.domains.every((d) => typeof d === "string" && !d.includes("/")),
     "must list host names the source contacts, like example.org or *.example.org");
+  if (m.format !== undefined) {
+    const allowed = FORMATS[m.kind] ?? [];
+    need("format", allowed.includes(m.format), `must be one of ${allowed.join(", ")} for ${m.kind} sources`);
+  }
+  if (m.rateLimit !== undefined) {
+    const ms = m.rateLimit?.minIntervalMs;
+    need("rateLimit.minIntervalMs", Number.isInteger(ms) && ms >= 0 && ms <= 60000, "must be a whole number of milliseconds up to 60000");
+  }
+  if (m.capabilities !== undefined) {
+    need("capabilities", Array.isArray(m.capabilities) && m.capabilities.every((c) => CAPABILITIES.includes(c)),
+      `may only contain ${CAPABILITIES.join(", ")}`);
+  }
   return errors;
 }
 
@@ -76,6 +90,7 @@ export async function buildRepo(repoDir, { privatePem, outDir = path.join(repoDi
       kind: s.manifest.kind,
       contentRating: s.manifest.contentRating,
       languages: s.manifest.languages,
+      ...(s.manifest.format ? { format: s.manifest.format } : {}),
       ...(s.manifest.minAppVersion ? { minAppVersion: s.manifest.minAppVersion } : {}),
       package: rel,
       sha256: digest.toString("hex"),

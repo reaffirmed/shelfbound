@@ -1,0 +1,125 @@
+import Foundation
+import ShelfCore
+
+public enum UpdateInterval: String, Codable, Sendable, CaseIterable, Identifiable {
+    case hourly, sixHours, daily, manual
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .hourly: "Every hour"
+        case .sixHours: "Every 6 hours"
+        case .daily: "Once a day"
+        case .manual: "Only when I ask"
+        }
+    }
+
+    public var seconds: TimeInterval? {
+        switch self {
+        case .hourly: 3600
+        case .sixHours: 6 * 3600
+        case .daily: 24 * 3600
+        case .manual: nil
+        }
+    }
+}
+
+/// What one update check found.
+public struct UpdateReport: Sendable, Hashable {
+    public struct Found: Sendable, Hashable {
+        public var key: WorkKey
+        public var title: String
+        public var newChapters: [Chapter]
+    }
+
+    public var found: [Found] = []
+    public var failures: [WorkKey: String] = [:]
+    public var checked = 0
+
+    public init() {}
+
+    public var newChapterCount: Int { found.reduce(0) { $0 + $1.newChapters.count } }
+}
+
+public enum UpdateChecker {
+    /// Merges a fresh chapter list into a record. Chapters not seen before are recorded as
+    /// new, unless this is the first time the work's chapters were fetched.
+    public static func apply(_ fetched: [Chapter], to record: inout WorkRecord, now: Date = Date()) -> [Chapter] {
+        let known = Set(record.chapters.map(\.id))
+        let isFirstFetch = record.chapters.isEmpty
+        record.chapters = fetched
+        record.lastCheckedAt = now
+        guard !isFirstFetch else { return [] }
+        let new = fetched.filter { !known.contains($0.id) && !record.readChapterIDs.contains($0.id) }
+        for chapter in new where !record.newChapterIDs.contains(chapter.id) {
+            record.newChapterIDs.append(chapter.id)
+        }
+        // Drop "new" marks for chapters the source removed.
+        let current = Set(fetched.map(\.id))
+        record.newChapterIDs.removeAll { !current.contains($0) }
+        return new
+    }
+
+    /// Fetches chapter lists for every work in the library and merges them into `state`.
+    /// Works from the same source are checked one at a time (sources are rate-limited
+    /// anyway); different sources run side by side.
+    public static func check(
+        _ state: LibraryState,
+        only keys: Set<WorkKey>? = nil,
+        now: Date = Date(),
+        fetch: @escaping @Sendable (WorkKey) async throws -> [Chapter]
+    ) async -> (LibraryState, UpdateReport) {
+        let targets = state.library.filter { keys?.contains($0.key) ?? true }
+        let bySource = Dictionary(grouping: targets.map(\.key), by: \.sourceID)
+
+        let results: [(WorkKey, Result<[Chapter], Error>)] = await withTaskGroup(of: [(WorkKey, Result<[Chapter], Error>)].self) { group in
+            for (_, keys) in bySource {
+                group.addTask {
+                    var out: [(WorkKey, Result<[Chapter], Error>)] = []
+                    for key in keys {
+                        if Task.isCancelled { break }
+                        do { out.append((key, .success(try await fetch(key)))) } catch { out.append((key, .failure(error))) }
+                    }
+                    return out
+                }
+            }
+            var all: [(WorkKey, Result<[Chapter], Error>)] = []
+            for await part in group { all += part }
+            return all
+        }
+
+        var state = state
+        var report = UpdateReport()
+        for (key, result) in results {
+            report.checked += 1
+            switch result {
+            case let .success(chapters):
+                guard var record = state[key] else { continue }
+                let new = apply(chapters, to: &record, now: now)
+                state[key] = record
+                if !new.isEmpty {
+                    report.found.append(.init(key: key, title: record.title, newChapters: new))
+                }
+            case let .failure(error):
+                report.failures[key] = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
+            }
+        }
+        report.found.sort { $0.title < $1.title }
+        state.lastUpdateCheck = now
+        return (state, report)
+    }
+
+    /// Notification text for a report: "Hollow Tide: 2 new chapters", or a summary for several works.
+    public static func notificationText(_ report: UpdateReport) -> (title: String, body: String)? {
+        guard !report.found.isEmpty else { return nil }
+        if report.found.count == 1, let only = report.found.first {
+            let n = only.newChapters.count
+            let body = n == 1 ? (only.newChapters.first?.title ?? "1 new chapter") : "\(n) new chapters"
+            return (only.title, body)
+        }
+        let total = report.newChapterCount
+        let names = report.found.prefix(3).map(\.title).joined(separator: ", ")
+        let more = report.found.count > 3 ? " and \(report.found.count - 3) more" : ""
+        return ("\(total) new chapters", names + more)
+    }
+}

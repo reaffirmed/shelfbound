@@ -29,6 +29,12 @@ enum Prelude {
         log(...parts) {
           native.log(parts.map((p) => (typeof p === "string" ? p : JSON.stringify(p))).join(" "));
         },
+        // For a bot check the app can't detect by itself: the app asks the person to open
+        // this page in a browser and pass the check, then retries.
+        needsBrowserVerification(url) {
+          native.verify(String(url));
+          throw new Error("Open " + url + " in the browser to continue.");
+        },
         settings: Object.freeze({
           get(key) {
             const value = native.setting(String(key));

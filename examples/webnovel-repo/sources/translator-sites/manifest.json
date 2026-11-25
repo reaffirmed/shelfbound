@@ -1,0 +1,11 @@
+{
+  "id": "org.shelfbound.example.translatorsites",
+  "name": "Translator sites",
+  "version": "1.0.0",
+  "kind": "text",
+  "format": "novel",
+  "languages": ["en"],
+  "contentRating": "mature",
+  "domains": ["*.wordpress.com", "*.blogspot.com"],
+  "capabilities": ["links"]
+}

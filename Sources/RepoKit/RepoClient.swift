@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import ShelfCore
 
 /// Remembers the first key seen for each repo URL (trust on first use).
@@ -26,7 +29,7 @@ public protocol RepoTransport: Sendable {
 public struct URLSessionTransport: RepoTransport {
     public init() {}
     public func data(from url: URL) async throws -> Data {
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await URLSession.shared.data(for: URLRequest(url: url))
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw RepoError.http(status: http.statusCode, url: url)
         }

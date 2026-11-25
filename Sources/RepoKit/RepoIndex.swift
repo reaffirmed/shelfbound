@@ -27,6 +27,8 @@ public struct RepoEntry: Codable, Sendable, Hashable, Identifiable {
     /// Base64 Ed25519 signature of the raw SHA-256 digest.
     public var signature: String
     public var icon: String?
+    /// Copied from the manifest so the repo page can filter manga from manhwa.
+    public var format: WorkFormat? = nil
 }
 
 /// Dotted numeric version compare ("1.10.0" > "1.9.2").
