@@ -359,6 +359,8 @@ struct SourceSearchView: View {
     @State private var loadedSetup = false
     /// Bumped by every search, so an older search that finishes late can't replace newer results.
     @State private var generation = 0
+    /// The text of the last search that came back, to tell "nothing found" from "not searched yet".
+    @State private var searchedText: String?
 
     /// Browse lists show until there's something typed or searched.
     private var showingListings: Bool {
@@ -406,6 +408,8 @@ struct SourceSearchView: View {
                     .controlSize(.large)
                     .padding(18)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            } else if results.isEmpty && error == nil && !showingListings, let searchedText, !query.isEmpty {
+                ContentUnavailableView.search(text: searchedText)
             } else if results.isEmpty && error == nil && !showingListings {
                 ContentUnavailableView(
                     "Search \(source.manifest.name)", systemImage: "magnifyingglass",
@@ -418,6 +422,7 @@ struct SourceSearchView: View {
             if value.isEmpty {
                 generation += 1
                 results = []
+                searchedText = nil
                 error = nil
                 hasMore = false
                 loading = false
@@ -467,6 +472,7 @@ struct SourceSearchView: View {
             let result = try await model.runtime(for: source.id).search(query: text, page: page, filters: values)
             guard mine == generation else { return }
             results = page == 1 ? result.results : results + result.results
+            searchedText = text
             self.page = page
             hasMore = result.hasMore
             error = nil
