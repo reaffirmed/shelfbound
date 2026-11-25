@@ -1,0 +1,6 @@
+Query chain:
+ →Find: Target Application 'app.shelfbound.Shelfbound'
+  ↪︎Find: Descendants matching type Button
+    ↪︎Find: Elements matching predicate '"browse.source" IN identifiers'
+      ↪︎Find: Elements matching predicate 'label CONTAINS[c] "weeb"'
+        ↪︎Find: First Match

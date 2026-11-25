@@ -1,0 +1,167 @@
+Application, 0x101cdd4b0, pid: 18085, label: 'Shelfbound' <App element pid: 18085>
+  Window (Main), 0x101c540a0, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4358530816.4>
+    Other, 0x101c6d3e0, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4360056720.5>
+      Other, 0x101c6da70, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4361233664.6>
+        Other, 0x101c6bec0, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4361083872.7>
+          Other, 0x101c58b60, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4358811072.8>
+            Other, 0x101c6cd20, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4358506592.9>
+              Other, 0x101c55f70, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4360102960.10>
+                Other, 0x101c6dde0, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4358576592.12>
+                  Other, 0x101c6e4a0, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4361073856.73>
+                    Other, 0x101c6d720, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4744931168.694>
+                      Other, 0x101c6e150, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4744858512.695>
+                        Other, 0x101c6e800, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4358861968.76>
+                          NavigationBar, 0x101c6eb60, {{0.0, 62.0}, {402.0, 166.0}}, identifier: 'Browse' <AX element pid: 18085, elementOrHash.elementID: 4358850720.77>
+                            Other, 0x101c6eec0, {{346.0, 66.0}, {36.0, 36.0}}, identifier: 'plus', label: 'Add repository' <AX element pid: 18085, elementOrHash.elementID: 4363371520.80>
+                              Other, 0x101c6f220, {{346.0, 66.0}, {36.0, 36.0}} <AX element pid: 18085, elementOrHash.elementID: 4745000144.1167>
+                                Button, 0x101c6f580, {{350.3, 66.0}, {27.3, 36.0}}, identifier: 'plus', label: 'Add repository' <AX element pid: 18085, elementOrHash.elementID: 5500019296.1168>
+                            StaticText, 0x101c6f920, {{16.0, 119.7}, {118.3, 40.7}}, label: 'Browse' <AX element pid: 18085, elementOrHash.elementID: 4360405360.717>
+                            SearchField, 0x101c6fcc0, {{16.0, 169.0}, {370.0, 44.0}}, label: 'Search all sources', placeholderValue: 'Search all sources' <AX element pid: 18085, elementOrHash.elementID: 4363347456.81>
+                              Image, 0x101c70040, {{28.0, 181.3}, {20.3, 18.7}}, identifier: 'magnifyingglass', label: 'Search' <AX element pid: 18085, elementOrHash.elementID: 4361746096.86>
+                          Other, 0x101c703c0, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4358689440.78>
+                            Other, 0x101c70730, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4358853232.83>
+                              Other, 0x101c70ad0, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4358846736.87>
+                                Other, 0x101c70e40, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4715628400.720>
+                                  CollectionView, 0x101c711a0, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4398055424.90>
+                                    Other, 0x101c71500, {{-16.0, -1520.0}, {434.0, 2059.7}} <AX element pid: 18085, elementOrHash.elementID: 4361863808.97>
+                                    Other, 0x101c71870, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4361549088.92>
+                                    Other, 0x101c71bf0, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4361178768.93>
+                                      Other, 0x101c71f80, {{0.0, 726.2}, {402.0, 147.8}} <AX element pid: 18085, elementOrHash.elementID: 4360468336.730>
+                                        Image, 0x101c72300, {{-120.0, 731.0}, {642.0, 286.0}}, identifier: 'AdditionalDimmingOverlay' <AX element pid: 18085, elementOrHash.elementID: 4360479808.743>
+                                        Other, 0x101c72670, {{0.0, 726.2}, {402.0, 147.8}} <AX element pid: 18085, elementOrHash.elementID: 4360469344.744>
+                                          Other, 0x101c729f0, {{0.0, 726.2}, {402.0, 147.8}} <AX element pid: 18085, elementOrHash.elementID: 4360470000.755>
+                                        Other, 0x101c72d70, {{0.0, 726.2}, {402.0, 147.8}} <AX element pid: 18085, elementOrHash.elementID: 4360470896.745>
+                                          Other, 0x101c730e0, {{0.0, 726.2}, {402.0, 147.8}} <AX element pid: 18085, elementOrHash.elementID: 4360477744.756>
+                                          Other, 0x101c73460, {{0.0, 726.2}, {402.0, 147.8}} <AX element pid: 18085, elementOrHash.elementID: 4715567760.757>
+                                    Cell, 0x101c73800, {{16.0, 228.0}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4405481984.725>
+                                      Other, 0x101c73b50, {{16.0, 228.0}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4742350672.735>
+                                      Other, 0x101c73eb0, {{16.0, 228.0}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4742457056.736>
+                                        Other, 0x101c74230, {{16.0, 228.0}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4407898112.749>
+                                          Other, 0x101c745a0, {{16.0, 228.0}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4745605696.1170>
+                                            StaticText, 0x101c74900, {{32.0, 246.0}, {148.3, 24.0}}, label: 'Freshly updated' <AX element pid: 18085, elementOrHash.elementID: 4745602400.1177>
+                                            StaticText, 0x101c74c60, {{32.0, 272.0}, {208.0, 14.3}}, label: 'Weeb Central · Newest chapters first' <AX element pid: 18085, elementOrHash.elementID: 4745604304.1178>
+                                            Button, 0x101c74fb0, {{323.7, 269.0}, {46.3, 18.0}}, label: 'See all' <AX element pid: 18085, elementOrHash.elementID: 4745606368.1179>
+                                    Cell, 0x101c75330, {{16.0, 297.0}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4400602112.782>
+                                      Other, 0x101c75690, {{16.0, 297.0}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4715431664.785>
+                                        Other, 0x101c759f0, {{16.0, 297.0}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4715445088.789>
+                                          Other, 0x101c75d50, {{16.0, 297.0}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 5500192224.1171>
+                                      Other, 0x101c760a0, {{16.0, 297.0}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4715429728.786>
+                                        Other, 0x101c76ba0, {{16.0, 297.0}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4398708736.790>
+                                          Other, 0x101c76f20, {{16.0, 297.0}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4360700272.1172>
+                                            ScrollView, 0x101c77270, {{16.0, 297.0}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4367414272.1180>
+                                              Other, 0x101c775d0, {{16.0, 297.0}, {3868.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4745567456.1188>
+                                                Other, 0x101c77940, {{36.0, 301.0}, {708.0, 217.0}} <AX element pid: 18085, elementOrHash.elementID: 4360704992.1190>
+                                                  Button, 0x101c77cb0, {{36.0, 301.0}, {108.0, 217.0}}, label: 'Eko Eko Azaraku, KOGA Shinichi' <AX element pid: 18085, elementOrHash.elementID: 5499905440.1192>
+                                                    Image, 0x101c78010, {{36.0, 301.0}, {108.0, 162.0}} <AX element pid: 18085, elementOrHash.elementID: 4360920256.1204>
+                                                    StaticText, 0x101c78370, {{36.0, 467.0}, {104.0, 33.7}}, label: 'Eko Eko Azaraku' <AX element pid: 18085, elementOrHash.elementID: 4742108224.1205>
+                                                    StaticText, 0x101c78e80, {{36.0, 504.7}, {75.7, 13.3}}, label: 'KOGA Shinichi' <AX element pid: 18085, elementOrHash.elementID: 4360932144.1206>
+                                                  Button, 0x101c79200, {{156.0, 301.0}, {108.0, 217.0}}, label: 'Yama to Shokuyoku to Watashi, SHINANOGAWA Hideo' <AX element pid: 18085, elementOrHash.elementID: 4360960448.1193>
+                                                    Image, 0x101c79570, {{156.0, 301.0}, {108.0, 162.0}} <AX element pid: 18085, elementOrHash.elementID: 4742547360.1207>
+                                                    StaticText, 0x101c798e0, {{156.0, 467.0}, {98.0, 33.7}}, label: 'Yama to Shokuyoku to Watashi' <AX element pid: 18085, elementOrHash.elementID: 4360070512.1208>
+                                                    StaticText, 0x101c79c60, {{156.0, 504.7}, {106.7, 13.3}}, label: 'SHINANOGAWA Hideo' <AX element pid: 18085, elementOrHash.elementID: 4742046448.1209>
+                                                  Button, 0x101c7a000, {{276.0, 301.0}, {108.0, 217.0}}, label: 'Lilim Holic, Musawo' <AX element pid: 18085, elementOrHash.elementID: 4741742208.1194>
+                                                    Image, 0x101c7a3a0, {{276.0, 301.0}, {108.0, 162.0}} <AX element pid: 18085, elementOrHash.elementID: 4742566864.1210>
+                                                    StaticText, 0x101c7a720, {{276.0, 467.0}, {65.7, 33.7}}, label: 'Lilim Holic' <AX element pid: 18085, elementOrHash.elementID: 5499859824.1211>
+                                                    StaticText, 0x101c7aa70, {{276.0, 504.7}, {43.0, 13.3}}, label: 'Musawo' <AX element pid: 18085, elementOrHash.elementID: 5500036304.1212>
+                                                  Button, 0x101c7ade0, {{396.0, 301.0}, {108.0, 217.0}}, label: 'Murim Login, Jang Cheol-Byuk' <AX element pid: 18085, elementOrHash.elementID: 4360591840.1195>
+                                                    Image, 0x101c7b160, {{396.0, 301.0}, {108.0, 162.0}} <AX element pid: 18085, elementOrHash.elementID: 5500149104.1213>
+                                                    StaticText, 0x101c7b4e0, {{396.0, 467.0}, {78.0, 33.7}}, label: 'Murim Login' <AX element pid: 18085, elementOrHash.elementID: 4361025024.1214>
+                                                    StaticText, 0x101c7b830, {{396.0, 504.7}, {90.0, 13.3}}, label: 'Jang Cheol-Byuk' <AX element pid: 18085, elementOrHash.elementID: 4742700704.1215>
+                                                  Button, 0x101c7bb90, {{516.0, 301.0}, {108.0, 217.0}}, label: 'Murim Psychopath, Gonbung' <AX element pid: 18085, elementOrHash.elementID: 5500170864.1196>
+                                                    Image, 0x101c7bf20, {{516.0, 301.0}, {108.0, 162.0}} <AX element pid: 18085, elementOrHash.elementID: 4742522624.1216>
+                                                    StaticText, 0x101c7c290, {{516.0, 467.0}, {74.3, 33.7}}, label: 'Murim Psychopath' <AX element pid: 18085, elementOrHash.elementID: 4741918560.1217>
+                                                    StaticText, 0x101c7c5f0, {{516.0, 504.7}, {48.0, 13.3}}, label: 'Gonbung' <AX element pid: 18085, elementOrHash.elementID: 4360521648.1218>
+                                                  Button, 0x101c7c930, {{636.0, 301.0}, {108.0, 217.0}}, label: 'Demon Devourer, Bread-Eating Squirrel' <AX element pid: 18085, elementOrHash.elementID: 4742665952.1197>
+                                                    Image, 0x101c7cca0, {{636.0, 301.0}, {108.0, 162.0}} <AX element pid: 18085, elementOrHash.elementID: 4360443216.1219>
+                                                    StaticText, 0x101c7cff0, {{636.0, 467.0}, {106.0, 33.7}}, label: 'Demon Devourer' <AX element pid: 18085, elementOrHash.elementID: 4742295152.1220>
+                                                    StaticText, 0x101c7d340, {{636.0, 504.7}, {104.0, 13.3}}, label: 'Bread-Eating Squirrel' <AX element pid: 18085, elementOrHash.elementID: 4742665520.1221>
+                                    Other, 0x101c7d690, {{-16.0, 539.7}, {434.0, 311.7}} <AX element pid: 18085, elementOrHash.elementID: 4361850064.91>
+                                    Cell, 0x101c7d9f0, {{16.0, 539.7}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4408053760.728>
+                                      Other, 0x101c7dd50, {{16.0, 539.7}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4742312992.739>
+                                      Other, 0x101c7e0d0, {{16.0, 539.7}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4742315792.740>
+                                        Other, 0x101c7e460, {{16.0, 539.7}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4400870912.752>
+                                          Other, 0x101c7e7c0, {{16.0, 539.7}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4745597392.1173>
+                                            StaticText, 0x101c7eb60, {{32.0, 557.7}, {81.3, 24.0}}, label: 'Trending' <AX element pid: 18085, elementOrHash.elementID: 4745218608.1181>
+                                            StaticText, 0x101c7eeb0, {{32.0, 583.7}, {217.7, 14.3}}, label: 'Weeb Central · Most popular right now' <AX element pid: 18085, elementOrHash.elementID: 4745596016.1182>
+                                            Button, 0x101c7f240, {{323.7, 580.7}, {46.3, 18.0}}, label: 'See all' <AX element pid: 18085, elementOrHash.elementID: 4745598064.1183>
+                                    Cell, 0x101c7f5c0, {{16.0, 608.7}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4400554496.781>
+                                      Other, 0x101c7f910, {{16.0, 608.7}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4745291664.783>
+                                        Other, 0x101c7fcb0, {{16.0, 608.7}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4715560016.787>
+                                          Other, 0x101c80030, {{16.0, 608.7}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4361534160.1174>
+                                      Other, 0x101c80380, {{16.0, 608.7}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4715976848.784>
+                                        Other, 0x101c806e0, {{16.0, 608.7}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4367919616.788>
+                                          Other, 0x101c80a60, {{16.0, 608.7}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4745743600.1175>
+                                            ScrollView, 0x101c80dc0, {{16.0, 608.7}, {370.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4368361984.1184>
+                                              Other, 0x101c81110, {{16.0, 608.7}, {3868.0, 225.0}} <AX element pid: 18085, elementOrHash.elementID: 4745578704.1189>
+                                                Other, 0x101c81470, {{36.0, 612.7}, {708.0, 217.0}} <AX element pid: 18085, elementOrHash.elementID: 4745741200.1191>
+                                                  Button, 0x101c817f0, {{36.0, 612.7}, {108.0, 217.0}}, label: 'One Piece, ODA Eiichiro' <AX element pid: 18085, elementOrHash.elementID: 4745706992.1198>
+                                                    Image, 0x101c81b70, {{36.0, 612.7}, {108.0, 162.0}} <AX element pid: 18085, elementOrHash.elementID: 4742684976.1222>
+                                                    StaticText, 0x101c81ee0, {{36.0, 778.7}, {63.7, 33.7}}, label: 'One Piece' <AX element pid: 18085, elementOrHash.elementID: 4745704784.1223>
+                                                    StaticText, 0x101c82250, {{36.0, 816.3}, {65.3, 13.3}}, label: 'ODA Eiichiro' <AX element pid: 18085, elementOrHash.elementID: 4745705216.1224>
+                                                  Button, 0x101c825b0, {{156.0, 612.7}, {108.0, 217.0}}, label: 'Blue Lock, KANESHIRO Muneyuki' <AX element pid: 18085, elementOrHash.elementID: 4745712816.1199>
+                                                    Image, 0x101c82910, {{156.0, 612.7}, {108.0, 162.0}} <AX element pid: 18085, elementOrHash.elementID: 5499844048.1225>
+                                                    StaticText, 0x101c82c70, {{156.0, 778.7}, {61.3, 33.7}}, label: 'Blue Lock' <AX element pid: 18085, elementOrHash.elementID: 4745710608.1226>
+                                                    StaticText, 0x101c82ff0, {{156.0, 816.3}, {105.0, 13.3}}, label: 'KANESHIRO Muneyuki' <AX element pid: 18085, elementOrHash.elementID: 4745711040.1227>
+                                                  Button, 0x101c83370, {{276.0, 612.7}, {108.0, 217.0}}, label: 'Overgeared, Park Saenal' <AX element pid: 18085, elementOrHash.elementID: 4745718640.1200>
+                                                    Image, 0x101c83700, {{276.0, 612.7}, {108.0, 162.0}} <AX element pid: 18085, elementOrHash.elementID: 4360957424.1228>
+                                                    StaticText, 0x101c83a50, {{276.0, 778.7}, {74.0, 33.7}}, label: 'Overgeared' <AX element pid: 18085, elementOrHash.elementID: 4745716432.1229>
+                                                    StaticText, 0x101c83de0, {{276.0, 816.3}, {61.7, 13.3}}, label: 'Park Saenal' <AX element pid: 18085, elementOrHash.elementID: 4745716864.1230>
+                                                  Button, 0x101c84150, {{396.0, 612.7}, {108.0, 217.0}}, label: 'Black Clover, TABATA Yuuki' <AX element pid: 18085, elementOrHash.elementID: 4745724464.1201>
+                                                    Image, 0x101c844c0, {{396.0, 612.7}, {108.0, 162.0}} <AX element pid: 18085, elementOrHash.elementID: 4742335872.1231>
+                                                    StaticText, 0x101c84800, {{396.0, 778.7}, {78.7, 33.7}}, label: 'Black Clover' <AX element pid: 18085, elementOrHash.elementID: 4745722256.1232>
+                                                    StaticText, 0x101c84b70, {{396.0, 816.3}, {72.7, 13.3}}, label: 'TABATA Yuuki' <AX element pid: 18085, elementOrHash.elementID: 4745722688.1233>
+                                                  Button, 0x101c84ee0, {{516.0, 612.7}, {108.0, 217.0}}, label: 'Dandadan, TATSU Yukinobu' <AX element pid: 18085, elementOrHash.elementID: 4745730288.1202>
+                                                    Image, 0x101c85250, {{516.0, 612.7}, {108.0, 162.0}} <AX element pid: 18085, elementOrHash.elementID: 4360599600.1234>
+                                                    StaticText, 0x101c855b0, {{516.0, 778.7}, {64.0, 33.7}}, label: 'Dandadan' <AX element pid: 18085, elementOrHash.elementID: 4745728080.1235>
+                                                    StaticText, 0x101c85900, {{516.0, 816.3}, {86.7, 13.3}}, label: 'TATSU Yukinobu' <AX element pid: 18085, elementOrHash.elementID: 4745728512.1236>
+                                                  Button, 0x101c85c60, {{636.0, 612.7}, {108.0, 217.0}}, label: 'One Piece (Color), ODA Eiichiro' <AX element pid: 18085, elementOrHash.elementID: 4745736112.1203>
+                                                    Image, 0x101c85fc0, {{636.0, 612.7}, {108.0, 162.0}} <AX element pid: 18085, elementOrHash.elementID: 4742546928.1237>
+                                                    StaticText, 0x101c86350, {{636.0, 778.7}, {67.0, 33.7}}, label: 'One Piece (Color)' <AX element pid: 18085, elementOrHash.elementID: 4745733904.1238>
+                                                    StaticText, 0x101c866a0, {{636.0, 816.3}, {65.3, 13.3}}, label: 'ODA Eiichiro' <AX element pid: 18085, elementOrHash.elementID: 4745734336.1239>
+                                    Other, 0x101c86a20, {{-16.0, 851.0}, {434.0, 138.7}} <AX element pid: 18085, elementOrHash.elementID: 4745041088.1169>
+                                    Cell, 0x101c86da0, {{16.0, 851.0}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4407229440.722>
+                                      Other, 0x101c87100, {{16.0, 851.0}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4742349472.731>
+                                      Other, 0x101c87450, {{16.0, 851.0}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4742351584.732>
+                                        Other, 0x101c877d0, {{16.0, 851.0}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4396945408.746>
+                                          Other, 0x101c87b20, {{16.0, 851.0}, {370.0, 69.0}} <AX element pid: 18085, elementOrHash.elementID: 4745592176.1176>
+                                            StaticText, 0x101c87e70, {{32.0, 869.0}, {148.3, 24.0}}, label: 'Freshly updated' <AX element pid: 18085, elementOrHash.elementID: 4715702832.1185>
+                                            StaticText, 0x101c881e0, {{32.0, 895.0}, {241.7, 14.3}}, label: 'Archive of Our Own · Newest chapters first' <AX element pid: 18085, elementOrHash.elementID: 4745590944.1186>
+                                            Button, 0x101c88530, {{323.7, 892.0}, {46.3, 18.0}}, label: 'See all' <AX element pid: 18085, elementOrHash.elementID: 4745592848.1187>
+                                    Other, 0x101c888b0, {{369.0, 116.0}, {30.0, 675.0}}, label: 'Vertical scroll bar, 3 pages', value: 0% <AX element pid: 18085, elementOrHash.elementID: 4358884416.101>
+                                      Other, 0x101c88c40, {{396.0, 610.0}, {3.0, 178.0}} <AX element pid: 18085, elementOrHash.elementID: 4358875520.114>
+                                    Other, 0x101c88fb0, {{369.0, 116.0}, {30.0, 675.0}}, label: 'Vertical scroll bar, 3 pages', value: 0% <AX element pid: 18085, elementOrHash.elementID: 4358884416.101>
+                                      Other, 0x101c89350, {{396.0, 610.0}, {3.0, 178.0}} <AX element pid: 18085, elementOrHash.elementID: 4358875520.114>
+                          Other, 0x101c896a0, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4358864464.79>
+                            Other, 0x101c899f0, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4358866384.84>
+              Other, 0x101c89d60, {{0.0, 791.0}, {402.0, 83.0}} <AX element pid: 18085, elementOrHash.elementID: 4357939968.11>
+                Other, 0x101c8a0f0, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4358526192.13>
+                  TabBar, 0x101c8a490, {{0.0, 791.0}, {402.0, 83.0}}, label: 'Tab Bar' <AX element pid: 18085, elementOrHash.elementID: 4358559920.16>
+                    Other, 0x101c8a7f0, {{64.0, 791.0}, {274.0, 62.0}} <AX element pid: 18085, elementOrHash.elementID: 4358498160.19>
+                      Other, 0x101c8ab70, {{64.0, 791.0}, {94.0, 54.0}} <AX element pid: 18085, elementOrHash.elementID: 4360150496.22>
+                      Other, 0x101c8aef0, {{64.0, 791.0}, {274.0, 62.0}} <AX element pid: 18085, elementOrHash.elementID: 4358561232.23>
+                        Button, 0x101c8b250, {{68.0, 795.0}, {94.0, 54.0}}, identifier: 'books.vertical', label: 'Library' <AX element pid: 18085, elementOrHash.elementID: 4362733056.28>
+                          Image, 0x101c8b5c0, {{98.0, 800.0}, {33.3, 29.3}}, identifier: 'books.vertical.fill', label: 'Bookshelf' <AX element pid: 18085, elementOrHash.elementID: 4360057232.37>
+                        Button, 0x101c8b920, {{154.0, 795.0}, {94.0, 54.0}}, identifier: 'safari', label: 'Browse', Selected <AX element pid: 18085, elementOrHash.elementID: 4362754560.29>
+                          Image, 0x101c8bc90, {{187.0, 801.3}, {27.3, 27.3}}, identifier: 'safari.fill', label: 'safari' <AX element pid: 18085, elementOrHash.elementID: 4361295968.38>
+                        Button, 0x101c8c030, {{240.0, 795.0}, {94.0, 54.0}}, identifier: 'gearshape', label: 'Settings' <AX element pid: 18085, elementOrHash.elementID: 4362788864.30>
+                          Image, 0x101c8c390, {{273.0, 801.0}, {28.0, 28.0}}, identifier: 'gearshape.fill', label: 'gearshape.fill' <AX element pid: 18085, elementOrHash.elementID: 4361350848.39>
+                      Other, 0x101c8ce70, {{154.0, 795.0}, {94.0, 54.0}} <AX element pid: 18085, elementOrHash.elementID: 4360101328.24>
+                        Other, 0x101c8d1f0, {{154.0, 795.0}, {94.0, 54.0}} <AX element pid: 18085, elementOrHash.elementID: 4358563088.31>
+                          Other, 0x101c8d540, {{154.0, 795.0}, {94.0, 54.0}} <AX element pid: 18085, elementOrHash.elementID: 4358562672.40>
+                          Other, 0x101c8d8c0, {{154.0, 795.0}, {94.0, 54.0}} <AX element pid: 18085, elementOrHash.elementID: 4358563504.41>
+                            Other, 0x101c8dc10, {{154.0, 795.0}, {94.0, 54.0}} <AX element pid: 18085, elementOrHash.elementID: 4358566304.48>
+                              Other, 0x101c8df70, {{154.0, 795.0}, {94.0, 54.0}} <AX element pid: 18085, elementOrHash.elementID: 4358567232.53>
+                                Other, 0x101c8e2f0, {{154.0, 795.0}, {94.0, 54.0}} <AX element pid: 18085, elementOrHash.elementID: 4358568672.58>
+                              Other, 0x101c8e650, {{154.0, 795.0}, {94.0, 54.0}} <AX element pid: 18085, elementOrHash.elementID: 4358563968.54>
+                            Other, 0x101c8e9a0, {{154.0, 795.0}, {94.0, 54.0}} <AX element pid: 18085, elementOrHash.elementID: 4358565888.49>
+                Other, 0x101c8ed00, {{0.0, 791.0}, {402.0, 83.0}} <AX element pid: 18085, elementOrHash.elementID: 4358557584.14>
+                  Other, 0x101c8f070, {{0.0, 791.0}, {402.0, 83.0}} <AX element pid: 18085, elementOrHash.elementID: 4361220816.17>
+                    Other, 0x101c8f3f0, {{0.0, 791.0}, {402.0, 83.0}} <AX element pid: 18085, elementOrHash.elementID: 4358558864.20>
+                      Other, 0x101c8f750, {{0.0, 791.0}, {402.0, 83.0}} <AX element pid: 18085, elementOrHash.elementID: 4358577632.25>
+                        Other, 0x101c8fac0, {{0.0, 791.0}, {402.0, 83.0}} <AX element pid: 18085, elementOrHash.elementID: 4358569088.32>
+                          Other, 0x101c8fe10, {{0.0, 791.0}, {402.0, 83.0}} <AX element pid: 18085, elementOrHash.elementID: 4360158688.42>
+                      Other, 0x101c90180, {{0.0, 791.0}, {402.0, 83.0}} <AX element pid: 18085, elementOrHash.elementID: 4358578448.26>
+                        Other, 0x101c904e0, {{0.0, 791.0}, {402.0, 83.0}} <AX element pid: 18085, elementOrHash.elementID: 4360160544.33>
+  Window, 0x101c90850, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4362807808.184>
+    Other, 0x101c90bb0, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4358652800.186>
+      Other, 0x101c90f50, {{0.0, 0.0}, {402.0, 874.0}} <AX element pid: 18085, elementOrHash.elementID: 4714733024.188>
