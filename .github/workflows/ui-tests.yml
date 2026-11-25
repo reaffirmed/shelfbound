@@ -49,6 +49,16 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
 
+      - name: Check that the sites the test uses answer from this runner
+        continue-on-error: true
+        run: |
+          for url in "https://reaffirmed.github.io/shelfbound-sources/index.json" \
+                     "https://weebcentral.com/" \
+                     "https://archiveofourown.org/works/search?work_search%5Bquery%5D=coffee+shop"; do
+            curl -sS -o /dev/null -A "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)" --max-time 60 \
+              -w "%{http_code} in %{time_total}s  $url\n" "$url" || echo "failed: $url"
+          done
+
       - name: Build for testing
         run: |
           cd App

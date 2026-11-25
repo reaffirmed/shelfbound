@@ -139,7 +139,12 @@ final class WalkthroughUITests: XCTestCase {
             let search = app.searchFields.firstMatch
             search.tap()
             search.typeText("\(query)\n")
-            XCTAssertTrue(firstResult().waitForExistence(timeout: 45), "No \(name) results for \(query)")
+            if !firstResult().waitForExistence(timeout: 45) {
+                // One retry, for a slow site: submit the same search again.
+                search.tap()
+                search.typeText("\n")
+                XCTAssertTrue(firstResult().waitForExistence(timeout: 45), "No \(name) results for \(query)")
+            }
             sleep(2)
         }
 
