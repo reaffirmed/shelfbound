@@ -69,6 +69,8 @@ jobs:
       # A fixed "latest-build" pre-release, so the newest IPA has a direct link
       # that opens on the phone: .../releases/download/latest-build/Shelfbound.ipa
       - name: Update the latest-build release
+        # Throwaway check branches don't replace the IPA people install.
+        if: ${{ !startsWith(github.ref_name, 'claude/ui-check') }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
