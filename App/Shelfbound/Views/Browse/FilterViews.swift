@@ -372,3 +372,109 @@ struct FilterChipLabel: View {
         .transaction { $0.animation = nil }
     }
 }
+
+/// One button beside the results that flips between the list and big covers. It sits in
+/// the results, not the toolbar, because the toolbar hides while the search field is active.
+struct SearchLayoutToggle: View {
+    @Binding var layout: SearchLayout
+
+    var body: some View {
+        Button {
+            layout = layout == .list ? .covers : .list
+        } label: {
+            Image(systemName: layout == .list ? SearchLayout.covers.systemImage : SearchLayout.list.systemImage)
+                .font(.body.weight(.medium))
+                .frame(width: 36, height: 32)
+                .background(Capsule().fill(Color(.tertiarySystemFill)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(layout == .list ? "Show results as covers" : "Show results as a list")
+        .accessibilityIdentifier("search.layout")
+    }
+}
+
+/// How search results show: a list with details, or a grid of big covers like Discover.
+enum SearchLayout: String, CaseIterable, Identifiable {
+    case list, covers
+
+    static let key = "search.layout"
+
+    var id: String { rawValue }
+    var label: String { self == .list ? "List" : "Covers" }
+    var systemImage: String { self == .list ? "list.bullet" : "square.grid.2x2" }
+}
+
+/// The toolbar button that switches search results between the list and big covers.
+struct SearchLayoutMenu: View {
+    @Binding var layout: SearchLayout
+
+    var body: some View {
+        Menu {
+            Picker("Show results as", selection: $layout) {
+                ForEach(SearchLayout.allCases) { Label($0.label, systemImage: $0.systemImage).tag($0) }
+            }
+        } label: {
+            Image(systemName: layout.systemImage)
+        }
+        .accessibilityLabel("Show results as")
+    }
+}
+
+/// Search results as big covers with the title under them, the way Discover shows its
+/// rows. Sits in one list row so it works inside the same List as the other results.
+@MainActor
+struct CoverGrid: View {
+    struct Item: Identifiable {
+        let route: WorkRoute
+        let format: WorkFormat
+        /// A line under the tile in place of its usual meta, like the source's name.
+        var caption: String? = nil
+        /// The same work on other sources, offered on touch and hold.
+        var alternatives: [(String, WorkRoute)] = []
+        var id: String { route.key.id }
+    }
+
+    let items: [Item]
+    /// Opens a work. A button rather than a NavigationLink, which in a List row would add
+    /// a disclosure chevron beside every tile.
+    let open: (WorkRoute) -> Void
+
+    /// Three across on a phone, more on wider screens, each cover as wide as its column.
+    private let columns = [GridItem(.adaptive(minimum: 96, maximum: 160), spacing: 12, alignment: .top)]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+            ForEach(items) { item in
+                Button { open(item.route) } label: {
+                    let work = item.route.summary
+                    VStack(alignment: .leading, spacing: 3) {
+                        CoverView(
+                            title: work.title, author: work.authors.first ?? "", format: item.format, url: work.coverURL,
+                            words: work.wordCount, chapters: work.chapterCount)
+                        Text(work.title)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(2, reservesSpace: true)
+                            .multilineTextAlignment(.leading)
+                        Text(item.caption ?? work.authors.first ?? work.fandoms?.first ?? item.format.label)
+                            .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("work.result")
+                .contextMenu {
+                    if !item.alternatives.isEmpty {
+                        ForEach(Array(item.alternatives.enumerated()), id: \.offset) { _, alternative in
+                            Button("Open on \(alternative.0)") { open(alternative.1) }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
+        .listRowBackground(Color.clear)
+    }
+}
