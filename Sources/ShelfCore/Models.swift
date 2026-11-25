@@ -40,14 +40,17 @@ public struct SourceManifest: Codable, Sendable, Hashable, Identifiable {
     public var rateLimit: RateLimit?
     /// Optional features: "filters" (`getFilters`), "links" (`resolveLink`, reads chapter
     /// links other sources hand over), "discovery" (chapters are links to other sites),
-    /// "listings" (`getListings` and `getListing`, browsable lists like "Trending").
+    /// "listings" (`getListings` and `getListing`, browsable lists like "Trending"),
+    /// "account" (sign-in through the site's own page, and the person's lists on the site).
     public var capabilities: [String]?
+    /// With the "account" capability: where the person signs in.
+    public var account: AccountConfig?
 
     public init(
         id: String, name: String, version: String, kind: ContentKind,
         languages: [String], contentRating: ContentRating, domains: [String],
         minAppVersion: String? = nil, format: WorkFormat? = nil, rateLimit: RateLimit? = nil,
-        capabilities: [String]? = nil
+        capabilities: [String]? = nil, account: AccountConfig? = nil
     ) {
         self.id = id
         self.name = name
@@ -60,6 +63,7 @@ public struct SourceManifest: Codable, Sendable, Hashable, Identifiable {
         self.format = format
         self.rateLimit = rateLimit
         self.capabilities = capabilities
+        self.account = account
     }
 
     public var defaultFormat: WorkFormat { format ?? (kind == .text ? .fic : .manga) }
@@ -70,7 +74,61 @@ public struct SourceManifest: Codable, Sendable, Hashable, Identifiable {
 }
 
 public enum SourceCapability: String, Sendable {
-    case filters, links, discovery, listings
+    case filters, links, discovery, listings, account
+}
+
+/// How a source with the "account" capability signs in: the site's own sign-in page,
+/// opened in a web view. The app keeps the site's cookies, never a password.
+public struct AccountConfig: Codable, Sendable, Hashable {
+    public var loginURL: URL
+
+    public init(loginURL: URL) { self.loginURL = loginURL }
+}
+
+/// Who is signed in, from a source's `getAccount()`.
+public struct SourceAccount: Codable, Sendable, Hashable {
+    public var username: String
+    public var url: URL?
+
+    public init(username: String, url: URL? = nil) {
+        self.username = username
+        self.url = url
+    }
+}
+
+/// One of the person's own lists on the site, from `getAccountLists()`: bookmarks,
+/// a reading list, history. Its works come from `getAccountList(id, page)`.
+public struct AccountList: Codable, Sendable, Hashable, Identifiable {
+    public var id: String
+    public var title: String
+    public var subtitle: String?
+    /// Whether it makes sense to copy the list into the library.
+    public var importable: Bool?
+
+    public init(id: String, title: String, subtitle: String? = nil, importable: Bool? = nil) {
+        self.id = id
+        self.title = title
+        self.subtitle = subtitle
+        self.importable = importable
+    }
+}
+
+/// What the signed-in person has done with a work on the site. Nil fields are unknown.
+public struct WorkAccountState: Codable, Sendable, Hashable {
+    public var markedForLater: Bool?
+    public var subscribed: Bool?
+    public var kudos: Bool?
+
+    public init(markedForLater: Bool? = nil, subscribed: Bool? = nil, kudos: Bool? = nil) {
+        self.markedForLater = markedForLater
+        self.subscribed = subscribed
+        self.kudos = kudos
+    }
+}
+
+/// Something the signed-in person can do to a work from its page, through `setWorkState`.
+public enum WorkAction: String, Codable, Sendable, CaseIterable {
+    case markedForLater, subscribed, kudos
 }
 
 public struct RateLimit: Codable, Sendable, Hashable {
@@ -246,6 +304,8 @@ public struct Work: Codable, Sendable, Hashable, Identifiable {
     public var originalLanguage: String?
     public var translators: [String]?
     public var releaseGroup: String?
+    /// The signed-in person's marks on this work, for sources with the "account" capability.
+    public var account: WorkAccountState?
 
     public init(id: String, title: String, authors: [String] = []) {
         self.id = id

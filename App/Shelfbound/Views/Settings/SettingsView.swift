@@ -2,12 +2,20 @@ import DownloadKit
 import LibraryKit
 import ShelfCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     let showBrowse: () -> Void
     @State private var showingStyle = false
+    @State private var exporting = false
+    @State private var backupFile: BackupDocument?
+    @State private var backupName = "Shelfbound backup.json"
+    @State private var importing = false
+    @State private var pendingRestore: LibraryBackup?
+    @State private var restoring = false
+    @State private var restoreMessage: String?
 
     var body: some View {
         @Bindable var model = model
@@ -63,6 +71,44 @@ struct SettingsView: View {
                     Text("From Paperback, Aidoku, or a list of links such as AO3 bookmarks.")
                 }
 
+                Section {
+                    NavigationLink {
+                        AccountsView()
+                    } label: {
+                        row("Accounts", icon: "person.crop.circle", color: Color(hex: "#9E2A2B"), value: accountsValue)
+                    }
+                    .accessibilityIdentifier("settings.accounts")
+                } footer: {
+                    Text("Sign in to sites like AO3 to import your bookmarks and read works for signed-in users.")
+                }
+
+                Section {
+                    Button {
+                        do {
+                            let data = try model.makeBackup()
+                            backupFile = BackupDocument(data: data)
+                            backupName = "Shelfbound backup \(Date().formatted(.iso8601.year().month().day()))"
+                            exporting = true
+                        } catch {
+                            model.report(error)
+                        }
+                    } label: {
+                        row("Back up library", icon: "externaldrive", color: Color(hex: "#2F8F6A"), value: "", chevron: true)
+                    }
+                    .buttonStyle(.plain)
+                    Button {
+                        importing = true
+                    } label: {
+                        row("Restore from backup", icon: "arrow.counterclockwise", color: Color(hex: "#3A7BD5"), value: restoring ? "Restoring..." : "", chevron: true)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(restoring)
+                } header: {
+                    Text("Backup")
+                } footer: {
+                    Text("A file with your library, reading places, highlights, settings and sources. Keep one in Files or iCloud Drive, so reinstalling or a new phone loses nothing.")
+                }
+
                 Section("Storage") {
                     NavigationLink {
                         DownloadsView()
@@ -103,8 +149,58 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationDestination(isPresented: $model.pendingShowDownloads) { DownloadsView() }
+            .navigationDestination(for: WorkRoute.self) { WorkDetailView(route: $0) }
+            .fileExporter(isPresented: $exporting, document: backupFile, contentType: .json, defaultFilename: backupName) { result in
+                if case let .failure(error) = result { model.report(error) }
+            }
+            .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
+                switch result {
+                case let .success(url):
+                    let access = url.startAccessingSecurityScopedResource()
+                    defer { if access { url.stopAccessingSecurityScopedResource() } }
+                    do {
+                        pendingRestore = try LibraryBackup.decode(Data(contentsOf: url))
+                    } catch {
+                        model.report(error)
+                    }
+                case let .failure(error):
+                    model.report(error)
+                }
+            }
+            .confirmationDialog(
+                "Restore this backup?",
+                isPresented: Binding(get: { pendingRestore != nil }, set: { if !$0 { pendingRestore = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("Restore") {
+                    guard let backup = pendingRestore else { return }
+                    pendingRestore = nil
+                    restoring = true
+                    Task {
+                        let report = await model.restore(backup)
+                        restoring = false
+                        restoreMessage = report.summary
+                    }
+                }
+            } message: {
+                if let backup = pendingRestore {
+                    Text("From \(backup.createdAt.formatted(date: .abbreviated, time: .shortened)), with \(backup.library.records.count) works. Works in the backup replace the same works here; everything else stays.")
+                }
+            }
+            .alert("Backup restored", isPresented: Binding(get: { restoreMessage != nil }, set: { if !$0 { restoreMessage = nil } })) {
+                Button("OK") { restoreMessage = nil }
+            } message: {
+                Text(restoreMessage ?? "")
+            }
             .sheet(isPresented: $showingStyle) { ReaderStyleSheet().presentationDetents([.medium, .large]) }
         }
+    }
+
+    private var accountsValue: String {
+        let names = model.accountSources.compactMap { model.accounts[$0.id]?.username }
+        if names.count == 1 { return names[0] }
+        if names.count > 1 { return "\(names.count) signed in" }
+        return model.accountSources.isEmpty ? "" : "Not signed in"
     }
 
     private var lastCheckFooter: String {

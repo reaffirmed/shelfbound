@@ -76,6 +76,31 @@ final class WalkthroughUITests: XCTestCase {
             sleep(1)
         }
 
+        step("Settings: accounts") {
+            let row = app.buttons.matching(identifier: "settings.accounts").firstMatch
+            for _ in 0..<6 where !(row.exists && row.isHittable) { app.swipeDown(); sleep(1) }
+            guard row.waitForExistence(timeout: 5) else { return XCTFail("No Accounts row in Settings") }
+            row.tap()
+            let ao3 = app.buttons.matching(identifier: "account.source")
+                .matching(NSPredicate(format: "label CONTAINS[c] 'archive of our own'")).firstMatch
+            XCTAssertTrue(ao3.waitForExistence(timeout: 10), "AO3 isn't offered for signing in")
+        }
+
+        step("Settings: AO3 account, signed out") {
+            let ao3 = app.buttons.matching(identifier: "account.source").firstMatch
+            if ao3.exists { ao3.tap() }
+            XCTAssertTrue(app.buttons["Sign in to Archive of Our Own"].waitForExistence(timeout: 10), "No AO3 sign-in button")
+            goBack()
+            goBack()
+        }
+
+        step("Settings: backup") {
+            let backup = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Back up library'")).firstMatch
+            for _ in 0..<6 where !(backup.exists && backup.isHittable) { app.swipeUp(); sleep(1) }
+            XCTAssertTrue(backup.exists, "No backup row in Settings")
+            XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'Restore from backup'")).firstMatch.exists, "No restore row")
+        }
+
         step("Browse with sources installed") {
             app.tabBars.buttons["Browse"].tap()
             popToRoot()

@@ -92,6 +92,32 @@ public final class SourceRuntime: @unchecked Sendable {
         return try await invoke("getListing", [id, page])
     }
 
+    // MARK: Account
+
+    /// Who is signed in, from the optional `getAccount()`. Nil when nobody is.
+    public func getAccount() async throws -> SourceAccount? {
+        guard implements("getAccount") else { throw SourceError.missingFunction("getAccount") }
+        return try await invoke("getAccount", [])
+    }
+
+    /// The person's own lists on the site. Empty when the source has none.
+    public func getAccountLists() async throws -> [AccountList] {
+        guard implements("getAccountLists"), implements("getAccountList") else { return [] }
+        return try await invoke("getAccountLists", [])
+    }
+
+    /// One page of one of the person's lists.
+    public func getAccountList(id: String, page: Int = 1) async throws -> SearchPage {
+        guard implements("getAccountList") else { throw SourceError.missingFunction("getAccountList") }
+        return try await invoke("getAccountList", [id, page])
+    }
+
+    /// Marks a work for later, subscribes, or leaves kudos, and returns the work's state after.
+    public func setWorkState(workID: String, action: WorkAction, value: Bool) async throws -> WorkAccountState {
+        guard implements("setWorkState") else { throw SourceError.missingFunction("setWorkState") }
+        return try await invoke("setWorkState", [workID, action.rawValue, value])
+    }
+
     /// Reads a chapter link another source handed over. Needs the "links" capability.
     public func resolveLink(_ url: URL) async throws -> ChapterContent {
         guard implements("resolveLink") else { throw SourceError.missingFunction("resolveLink") }
@@ -256,7 +282,8 @@ public final class SourceRuntime: @unchecked Sendable {
                 throw SourceError.missingFunction(name)
             }
         }
-        for name in ["getFilters", "getListings", "getListing", "resolveLink", "getLatest", "idFromURL"] {
+        for name in ["getFilters", "getListings", "getListing", "resolveLink", "getLatest", "idFromURL",
+                     "getAccount", "getAccountLists", "getAccountList", "setWorkState"] {
             if let fn = source.objectForKeyedSubscript(name), !fn.isUndefined, !fn.isNull {
                 optionalFunctions.insert(name)
             }

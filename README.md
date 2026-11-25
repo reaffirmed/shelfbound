@@ -76,6 +76,20 @@ Settings › Import library reads a Paperback backup (`.pas4`, a zip), an Aidoku
 
 The app uses [ZIPFoundation](https://github.com/weichsel/ZIPFoundation) (MIT) to open Paperback backups.
 
+## Accounts
+
+Settings › Accounts lists installed sources you can sign in to, such as AO3. You sign in on the site's own page inside the app; Shelfbound keeps the site's sign-in cookie in the Keychain and never sees your password. Signed in to AO3 you can:
+
+- read works restricted to registered users,
+- browse your Bookmarks, Marked for Later, History and Subscriptions, and **Import** them into the library (grouped by fandom like everything else), or turn on **Keep in sync** so new ones are added on every update check,
+- use **Mark for Later**, **Subscribe** and **Kudos** on a work's page.
+
+Chapters you read while signed in count in your AO3 history, since AO3 records visits itself. Syncing only ever adds to the library; nothing on your AO3 account changes unless you tap one of those buttons.
+
+## Backup and restore
+
+Settings › Back up library saves one JSON file with the library, reading places, highlights, glossaries, per-work settings, app settings, and the repos and sources you had. Settings › Restore from backup merges it back: works in the backup replace the same works here, repos are added again and sources are reinstalled from them. Sign-ins aren't in the backup, so sign in again afterwards. Sideloaded apps can expire, so keep a recent backup in Files or iCloud Drive.
+
 ## Highlights and notes
 
 In a fic or novel chapter, select text and choose **Highlight** or **Add Note**. Tap a highlight to edit its note, share it as a quote, or delete it. A work's page lists all its highlights under **Highlights and notes**, and **Export** shares them as Markdown. Highlights are stored with a little text either side, so they stay put if the source changes a chapter's markup, and they follow a work when it moves to another source.

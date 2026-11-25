@@ -2,6 +2,24 @@ import XCTest
 @testable import ShelfCore
 
 final class ShelfCoreTests: XCTestCase {
+    func testAccountManifestAndWorkState() throws {
+        let json = #"""
+        {"id":"org.example.ao3","name":"AO3","version":"1.2.0","kind":"text","languages":["en"],
+         "contentRating":"explicit","domains":["archiveofourown.org"],
+         "capabilities":["filters","account"],"account":{"loginURL":"https://archiveofourown.org/users/login"}}
+        """#
+        let manifest = try JSONDecoder().decode(SourceManifest.self, from: Data(json.utf8))
+        XCTAssertTrue(manifest.has(.account))
+        XCTAssertEqual(manifest.account?.loginURL.absoluteString, "https://archiveofourown.org/users/login")
+
+        // Sources from before accounts still decode, without the field.
+        let old = try JSONDecoder().decode(SourceManifest.self, from: Data(json.replacingOccurrences(of: #","account":{"loginURL":"https://archiveofourown.org/users/login"}"#, with: "").utf8))
+        XCTAssertNil(old.account)
+
+        let work = try JSONDecoder().decode(Work.self, from: Data(#"{"id":"1","title":"T","authors":[],"account":{"markedForLater":true,"subscribed":false}}"#.utf8))
+        XCTAssertEqual(work.account, WorkAccountState(markedForLater: true, subscribed: false, kudos: nil))
+    }
+
     func testDomainPolicy() {
         let policy = DomainPolicy(patterns: ["example.org", "*.cdn.example.net"])
         XCTAssertTrue(policy.allows(URL(string: "https://example.org/works/1")!))

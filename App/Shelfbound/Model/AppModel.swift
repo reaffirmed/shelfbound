@@ -33,7 +33,7 @@ struct UnhandledLink: Error, LocalizedError {
 @Observable
 final class AppModel {
     static let shared = AppModel()
-    nonisolated static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0"
+    nonisolated static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.3.0"
 
     private(set) var repos: [SavedRepo] = []
     private(set) var installed: [InstalledSource] = []
@@ -61,6 +61,8 @@ final class AppModel {
     var pendingContinue: WorkKey?
     /// A tapped "downloads paused" notification: show the Downloads screen.
     var pendingShowDownloads = false
+    /// Sites the person signed in to, by source ID. The cookies are in the Keychain.
+    private(set) var accounts: [String: SavedAccount] = [:]
 
     @ObservationIgnored let network = URLSessionNetwork(clearances: .shared)
     @ObservationIgnored let networkMonitor: NetworkMonitor
@@ -81,6 +83,7 @@ final class AppModel {
     private enum Keys {
         static let repos = "repos"
         static let settings = "settings"
+        static let accounts = "accounts"
     }
 
     private init() {
@@ -103,6 +106,11 @@ final class AppModel {
         repos = Self.load([SavedRepo].self, Keys.repos, from: .standard) ?? []
         installed = store?.installed() ?? []
         library = libraryFile?.load() ?? LibraryState()
+        accounts = Self.load([String: SavedAccount].self, Keys.accounts, from: .standard) ?? [:]
+        // Put signed-in sites' cookies back, in case the cookie store lost them.
+        for sourceID in accounts.keys {
+            for cookie in AccountKeychain.load(for: sourceID) { HTTPCookieStorage.shared.setCookie(cookie) }
+        }
         resolverBox.model = self
         ImageLoader.shared.screenScale = UIScreen.main.scale
 
@@ -211,9 +219,133 @@ final class AppModel {
         guard let store else { throw SourceError.unavailable }
         let runtime = try SourceRuntime(
             package: try store.package(for: sourceID), network: network,
-            settings: ["maxRating": settings.maxRating.rawValue])
+            settings: runtimeSettings(for: sourceID))
         runtimes[sourceID] = runtime
         return runtime
+    }
+
+    private func runtimeSettings(for sourceID: String) -> [String: String] {
+        var values = ["maxRating": settings.maxRating.rawValue]
+        if let account = accounts[sourceID] { values["account"] = account.username }
+        return values
+    }
+
+    /// Starts the source again, so it sees changed settings such as who is signed in.
+    private func restartRuntime(_ sourceID: String) {
+        runtimes[sourceID]?.close()
+        runtimes[sourceID] = nil
+        forgetListings(of: sourceID)
+    }
+
+    // MARK: - Accounts
+
+    /// Installed sources the person can sign in to.
+    var accountSources: [InstalledSource] {
+        visibleSources.filter { $0.manifest.has(.account) && $0.manifest.account != nil }
+    }
+
+    func isSignedIn(_ sourceID: String) -> Bool { accounts[sourceID] != nil }
+
+    /// Called with the cookies from the sign-in web view. Asks the source who is signed in,
+    /// and keeps the cookies in the Keychain if somebody is. Returns the account, or nil
+    /// when the site doesn't show anyone signed in yet.
+    func finishSignIn(sourceID: String, cookies: [HTTPCookie]) async throws -> SourceAccount? {
+        guard let manifest = manifest(for: sourceID) else { throw SourceError.unavailable }
+        let siteCookies = AccountKeychain.cookies(cookies, matching: manifest.domains)
+        for cookie in siteCookies { HTTPCookieStorage.shared.setCookie(cookie) }
+        restartRuntime(sourceID)
+        guard let account = try await runtime(for: sourceID).getAccount() else { return nil }
+        AccountKeychain.save(siteCookies, for: sourceID)
+        accounts[sourceID] = SavedAccount(
+            username: account.username, signedInAt: Date(), syncedLists: accounts[sourceID]?.syncedLists ?? [])
+        save(accounts, as: Keys.accounts)
+        restartRuntime(sourceID)
+        return account
+    }
+
+    /// Checks the saved session still works. Signs out locally if the site says nobody is signed in.
+    @discardableResult
+    func checkSignIn(sourceID: String) async throws -> Bool {
+        guard accounts[sourceID] != nil else { return false }
+        if try await runtime(for: sourceID).getAccount() != nil { return true }
+        forgetAccount(sourceID)
+        return false
+    }
+
+    /// Forgets the session here. Nothing on the site changes.
+    func signOut(sourceID: String) {
+        if let manifest = manifest(for: sourceID) {
+            let storage = HTTPCookieStorage.shared
+            for cookie in AccountKeychain.cookies(storage.cookies ?? [], matching: manifest.domains) {
+                storage.deleteCookie(cookie)
+            }
+        }
+        forgetAccount(sourceID)
+    }
+
+    private func forgetAccount(_ sourceID: String) {
+        AccountKeychain.delete(for: sourceID)
+        accounts[sourceID] = nil
+        save(accounts, as: Keys.accounts)
+        restartRuntime(sourceID)
+    }
+
+    func setSynced(_ listID: String, _ on: Bool, for sourceID: String) {
+        guard var account = accounts[sourceID] else { return }
+        account.syncedLists.removeAll { $0 == listID }
+        if on { account.syncedLists.append(listID) }
+        accounts[sourceID] = account
+        save(accounts, as: Keys.accounts)
+    }
+
+    func accountLists(sourceID: String) async throws -> [AccountList] {
+        try await runtime(for: sourceID).getAccountLists()
+    }
+
+    func accountList(sourceID: String, listID: String, page: Int) async throws -> SearchPage {
+        try await runtime(for: sourceID).getAccountList(id: listID, page: page)
+    }
+
+    /// Marks for later, subscribes or leaves kudos on the site, from a tap on the work's page.
+    func setWorkState(_ key: WorkKey, _ action: WorkAction, _ value: Bool) async throws {
+        let state = try await runtime(for: key.sourceID).setWorkState(workID: key.workID, action: action, value: value)
+        library.update(key) { $0.work?.account = state }
+        scheduleSave()
+    }
+
+    /// Adds a work from a list to the library without fetching it first. Its chapters come
+    /// with the next update check. Returns false when it was already there.
+    @discardableResult
+    func addToLibrary(_ key: WorkKey, summary: WorkSummary, addedAt: Date = Date()) -> Bool {
+        if library[key]?.inLibrary == true { return false }
+        ensureRecord(key, summary: summary)
+        library.setInLibrary(key, true)
+        library.update(key) { $0.addedAt = $0.addedAt ?? addedAt }
+        scheduleSave()
+        return true
+    }
+
+    /// Adds new works from the lists the person chose to keep in sync. Only reads the first
+    /// pages, where new bookmarks appear, and never removes anything.
+    @discardableResult
+    func syncAccountLists(pages: Int = 2) async -> [WorkKey] {
+        var added: [WorkKey] = []
+        for (sourceID, account) in accounts where !account.syncedLists.isEmpty && manifest(for: sourceID) != nil {
+            for listID in account.syncedLists {
+                for page in 1...max(1, pages) {
+                    guard let result = try? await accountList(sourceID: sourceID, listID: listID, page: page) else { break }
+                    var fresh = 0
+                    for work in result.results {
+                        let key = WorkKey(sourceID: sourceID, workID: work.id)
+                        if addToLibrary(key, summary: work) { added.append(key); fresh += 1 }
+                    }
+                    // A page with nothing new means the rest is already in the library.
+                    if fresh == 0 || !result.hasMore { break }
+                }
+            }
+        }
+        if !added.isEmpty { saveNow() }
+        return added
     }
 
     /// One page of a source's browse list. First pages are kept for ten minutes unless
@@ -502,6 +634,7 @@ final class AppModel {
         guard !isCheckingUpdates else { return lastReport ?? UpdateReport() }
         isCheckingUpdates = true
         defer { isCheckingUpdates = false }
+        if keys == nil { await syncAccountLists() }
 
         var runtimesBySource: [String: SourceRuntime] = [:]
         for source in Set(library.library.map(\.key.sourceID)) {
@@ -559,6 +692,51 @@ final class AppModel {
             BackgroundWork.scheduleRefresh(interval: settings.updateInterval)
         }
         if settings.badgeNewChapters != old.badgeNewChapters { refreshBadge() }
+    }
+
+    // MARK: - Backup
+
+    func makeBackup() throws -> Data {
+        var state = library
+        state.records = state.records.filter {
+            $0.value.inLibrary || $0.value.lastReadAt != nil || !$0.value.glossary.isEmpty || !($0.value.highlights ?? []).isEmpty
+        }
+        let backup = LibraryBackup(library: state, settings: settings, repos: repos, sources: installed.map(\.id))
+        return try LibraryBackup.encoder().encode(backup)
+    }
+
+    /// Merges a backup into this install: its works replace the same works here (others
+    /// stay), its repos are added, and its sources are installed again from those repos.
+    func restore(_ backup: LibraryBackup) async -> RestoreReport {
+        var report = RestoreReport()
+        for (id, record) in backup.library.records {
+            library.records[id] = record
+            report.works += 1
+        }
+        if library.lastUpdateCheck == nil { library.lastUpdateCheck = backup.library.lastUpdateCheck }
+        if let restored = backup.settings { settings = restored }
+        saveNow()
+
+        for repo in backup.repos where !repos.contains(where: { $0.url == repo.url }) {
+            guard let index = try? await client.fetchIndex(repo.url) else { continue }
+            addRepo(url: repo.url, index: index)
+            report.repos += 1
+        }
+        let wanted = backup.sources.filter { id in !installed.contains { $0.id == id } }
+        var missing = Set(wanted)
+        for repo in repos where !missing.isEmpty {
+            guard let index = try? await client.fetchIndex(repo.url) else { continue }
+            for entry in index.sources where missing.contains(entry.id) {
+                await install(entry, index: index, repo: repo.url)
+                if installed.contains(where: { $0.id == entry.id }) {
+                    missing.remove(entry.id)
+                    report.sourcesInstalled += 1
+                }
+            }
+        }
+        report.sourcesMissing = missing.sorted()
+        refreshBadge()
+        return report
     }
 
     // MARK: - Helpers

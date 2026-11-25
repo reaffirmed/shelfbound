@@ -137,5 +137,35 @@ final class SourceRuntimeTests: XCTestCase {
             XCTAssertEqual(function, "getChapters")
         }
     }
+
+    func testAccountFunctions() async throws {
+        let plain = try SourceRuntime(package: package(fullSource), network: network)
+        let noLists = try await plain.getAccountLists()
+        XCTAssertTrue(noLists.isEmpty)
+
+        let script = fullSource.replacingOccurrences(of: "globalThis.source = {", with: #"""
+        globalThis.source = {
+          async getAccount() { const name = host.settings.get("account"); return name ? { username: name, url: "https://example.org/users/" + name } : null; },
+          async getAccountLists() { return [{ id: "bookmarks", title: "Bookmarks", importable: true }, { id: "history", title: "History" }]; },
+          async getAccountList(id, page) { return { results: [{ id: id + page, title: "Saved", authors: [] }], hasMore: false }; },
+          async setWorkState(id, key, value) { return { markedForLater: key === "markedForLater" ? value : false, kudos: key === "kudos" || undefined }; },
+        """#)
+        let signedOut = try SourceRuntime(package: package(script), network: network)
+        let nobody = try await signedOut.getAccount()
+        XCTAssertNil(nobody)
+
+        let runtime = try SourceRuntime(package: package(script), network: network, settings: ["account": "fern"])
+        let account = try await runtime.getAccount()
+        XCTAssertEqual(account, SourceAccount(username: "fern", url: URL(string: "https://example.org/users/fern")))
+        let lists = try await runtime.getAccountLists()
+        XCTAssertEqual(lists.map(\.id), ["bookmarks", "history"])
+        XCTAssertEqual(lists.map(\.importable), [true, nil])
+        let page = try await runtime.getAccountList(id: "bookmarks", page: 2)
+        XCTAssertEqual(page.results.first?.id, "bookmarks2")
+        let marked = try await runtime.setWorkState(workID: "7", action: .markedForLater, value: true)
+        XCTAssertEqual(marked, WorkAccountState(markedForLater: true, subscribed: nil, kudos: nil))
+        let kudos = try await runtime.setWorkState(workID: "7", action: .kudos, value: true)
+        XCTAssertEqual(kudos.kudos, true)
+    }
 }
 #endif

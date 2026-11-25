@@ -35,8 +35,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.shelfbound.Shelfbound
-        MARKETING_VERSION: "0.2.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "2"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
@@ -77,8 +77,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.shelfbound.Shelfbound.Widgets
-        MARKETING_VERSION: "0.2.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "2"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
