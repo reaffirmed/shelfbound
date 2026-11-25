@@ -43,7 +43,8 @@ struct ListingSection: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(listing.title)
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    // Section headers default to grey; the list's title should read like one.
+                    .foregroundStyle(Color(.label))
                 if let subtitle {
                     Text(subtitle).font(.caption).foregroundStyle(.secondary)
                 }

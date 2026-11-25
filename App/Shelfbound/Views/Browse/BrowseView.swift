@@ -24,10 +24,11 @@ struct BrowseView: View {
                 if !results.isEmpty || searching {
                     searchResults
                 } else {
+                    // Sources first, so a source is one tap away; the browse rows follow.
+                    sources
                     ForEach(discover) { item in
                         ListingSection(source: item.source, listing: item.listing, showSourceName: true, refreshToken: discoverToken)
                     }
-                    sources
                     repositories
                 }
             }
