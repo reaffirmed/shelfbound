@@ -1,0 +1,114 @@
+name: UI tests
+
+# Runs the walkthrough UI test in the iOS Simulator against the live sources repo,
+# and saves a screenshot of every step plus a screen recording as artifacts.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths-ignore: ['**.md', 'examples/**', 'sdk/**']
+
+concurrency:
+  group: ui-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui-tests:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          cd App && xcodegen generate
+
+      - name: Boot an iPhone simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          runtimes = sorted((k for k in devices if "iOS" in k), key=lambda k: [int(p) if p.isdigit() else 0 for p in k.split("-")])
+          for runtime in reversed(runtimes):
+              phones = [d for d in devices[runtime] if d["name"].startswith("iPhone") and "Pro" in d["name"] and "Max" not in d["name"]] \
+                       or [d for d in devices[runtime] if d["name"].startswith("iPhone")]
+              if phones:
+                  print(phones[-1]["udid"]); break
+          ')
+          echo "Using $UDID"; xcrun simctl list devices | grep "$UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: Build for testing
+        run: |
+          cd App
+          xcodebuild build-for-testing -project Shelfbound.xcodeproj -scheme Shelfbound \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
+            > "$RUNNER_TEMP/build.log" 2>&1 || {
+              grep -E ': error:' "$RUNNER_TEMP/build.log" | sort -u | head -300
+              tail -60 "$RUNNER_TEMP/build.log"
+              exit 1
+            }
+          grep -E '\*\* .* SUCCEEDED' "$RUNNER_TEMP/build.log"
+
+      - name: Run UI tests (recording the screen)
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          xcrun simctl io "${{ steps.sim.outputs.udid }}" recordVideo --codec=h264 --force "$RUNNER_TEMP/out/walkthrough.mp4" &
+          REC=$!
+          sleep 2
+          cd App
+          status=0
+          xcodebuild test-without-building -project Shelfbound.xcodeproj -scheme Shelfbound \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            -resultBundlePath "$RUNNER_TEMP/Walkthrough.xcresult" \
+            > "$RUNNER_TEMP/test.log" 2>&1 || status=$?
+          kill -INT $REC; wait $REC || true
+          grep -E "Test Case|error:|failed|passed|Executed|\*\* TEST" "$RUNNER_TEMP/test.log" | tail -80
+          exit $status
+
+      - name: Export screenshots
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/out/screenshots"
+          if [ -d "$RUNNER_TEMP/Walkthrough.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/Walkthrough.xcresult" \
+              --output-path "$RUNNER_TEMP/out/screenshots" || true
+            # Name the files after their steps, from the manifest.
+            python3 - "$RUNNER_TEMP/out/screenshots" <<'PY'
+          import json, os, sys
+          out = sys.argv[1]
+          path = os.path.join(out, "manifest.json")
+          if os.path.exists(path):
+              for test in json.load(open(path)):
+                  for a in test.get("attachments", []):
+                      src = os.path.join(out, a["exportedFileName"])
+                      name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
+                      name = name.split("_0_")[0].replace("/", "-")
+                      ext = os.path.splitext(a["exportedFileName"])[1]
+                      if os.path.exists(src):
+                          os.rename(src, os.path.join(out, name + ext))
+          PY
+            ls "$RUNNER_TEMP/out/screenshots"
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/Walkthrough.xcresult" > "$RUNNER_TEMP/out/summary.json" || true
+            xcrun xcresulttool get test-results tests --path "$RUNNER_TEMP/Walkthrough.xcresult" > "$RUNNER_TEMP/out/tests.json" || true
+          fi
+          cp "$RUNNER_TEMP"/*.log "$RUNNER_TEMP/out/" 2>/dev/null || true
+          ls -la "$RUNNER_TEMP/out"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-test-screenshots
+          path: ${{ runner.temp }}/out
+          if-no-files-found: warn
