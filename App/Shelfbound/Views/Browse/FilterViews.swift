@@ -372,3 +372,79 @@ struct FilterChipLabel: View {
         .transaction { $0.animation = nil }
     }
 }
+
+/// How search results show: a list with details, or a grid of big covers like Discover.
+enum SearchLayout: String, CaseIterable, Identifiable {
+    case list, covers
+
+    static let key = "search.layout"
+
+    var id: String { rawValue }
+    var label: String { self == .list ? "List" : "Covers" }
+    var systemImage: String { self == .list ? "list.bullet" : "square.grid.2x2" }
+}
+
+/// The toolbar button that switches search results between the list and big covers.
+struct SearchLayoutMenu: View {
+    @Binding var layout: SearchLayout
+
+    var body: some View {
+        Menu {
+            Picker("Show results as", selection: $layout) {
+                ForEach(SearchLayout.allCases) { Label($0.label, systemImage: $0.systemImage).tag($0) }
+            }
+        } label: {
+            Image(systemName: layout.systemImage)
+        }
+        .accessibilityLabel("Show results as")
+        .accessibilityIdentifier("search.layout")
+    }
+}
+
+/// Search results as big covers with the title under them, the way Discover shows its
+/// rows. Sits in one list row so it works inside the same List as the other results.
+@MainActor
+struct CoverGrid: View {
+    struct Item: Identifiable {
+        let route: WorkRoute
+        let format: WorkFormat
+        /// A line under the tile in place of its usual meta, like the source's name.
+        var caption: String? = nil
+        /// The same work on other sources, offered on touch and hold.
+        var alternatives: [(String, WorkRoute)] = []
+        var id: String { route.key.id }
+    }
+
+    let items: [Item]
+    var open: ((WorkRoute) -> Void)? = nil
+
+    private let columns = [GridItem(.adaptive(minimum: ListingTile.width, maximum: ListingTile.width + 32), spacing: 12, alignment: .top)]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+            ForEach(items) { item in
+                NavigationLink(value: item.route) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ListingTile(work: item.route.summary, format: item.format)
+                        if let caption = item.caption {
+                            Text(caption).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                                .frame(width: ListingTile.width, alignment: .leading)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("work.result")
+                .contextMenu {
+                    if let open, !item.alternatives.isEmpty {
+                        ForEach(Array(item.alternatives.enumerated()), id: \.offset) { _, alternative in
+                            Button("Open on \(alternative.0)") { open(alternative.1) }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+        .listRowBackground(Color.clear)
+    }
+}

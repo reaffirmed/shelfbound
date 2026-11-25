@@ -16,6 +16,7 @@ struct SettingsView: View {
     @State private var pendingRestore: LibraryBackup?
     @State private var restoring = false
     @State private var restoreMessage: String?
+    @AppStorage(SearchLayout.key) private var searchLayout: SearchLayout = .list
 
     var body: some View {
         @Bindable var model = model
@@ -130,6 +131,12 @@ struct SettingsView: View {
                     } label: {
                         Label { Text("Show sources rated up to") } icon: { RowIcon(systemImage: "eye", color: Color(hex: "#9E2A2B")) }
                     }
+                    Picker(selection: $searchLayout) {
+                        ForEach(SearchLayout.allCases) { Text($0.label).tag($0) }
+                    } label: {
+                        Label { Text("Show search results as") } icon: { RowIcon(systemImage: "square.grid.2x2", color: Color(hex: "#2E7D6B")) }
+                    }
+                    .accessibilityIdentifier("settings.searchLayout")
                     NavigationLink {
                         InstalledSourcesView()
                     } label: {

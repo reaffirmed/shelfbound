@@ -143,6 +143,17 @@ final class WalkthroughUITests: XCTestCase {
         step("Search results merged") {
             let merged = app.segmentedControls.buttons["Merged"]
             if merged.exists { merged.tap(); sleep(1) }
+        }
+
+        step("Search results as covers") {
+            chooseLayout("Covers")
+            XCTAssertTrue(firstResult().waitForExistence(timeout: 10), "No results in the cover view")
+            sleep(2)
+        }
+
+        step("Search results back to the list") {
+            chooseLayout("List")
+            sleep(1)
             endSearch()
         }
 
@@ -374,6 +385,14 @@ final class WalkthroughUITests: XCTestCase {
 
     private func scrollTo(_ element: XCUIElement) {
         for _ in 0..<10 where !(element.exists && element.isHittable) { drag(from: 0.8, to: 0.3) }
+    }
+
+    private func chooseLayout(_ name: String) {
+        let menu = app.buttons["search.layout"]
+        guard menu.waitForExistence(timeout: 5) else { return XCTFail("No results layout button") }
+        menu.tap()
+        let option = app.buttons[name]
+        if option.waitForExistence(timeout: 5) { option.tap() } else { XCTFail("No \(name) layout") }
     }
 
     private func goBack() {
