@@ -83,9 +83,9 @@ final class WalkthroughUITests: XCTestCase {
         }
 
         step("Browse scrolled") {
-            app.swipeUp()
+            drag(from: 0.85, to: 0.15)
+            drag(from: 0.85, to: 0.15)
             sleep(2)
-            app.swipeDown()
         }
 
         step("Search all sources") {
@@ -130,6 +130,8 @@ final class WalkthroughUITests: XCTestCase {
             app.tabBars.buttons["Browse"].tap()
             popToRoot()
             let row = app.buttons.matching(identifier: "browse.source").matching(sourceRow(matching, other)).firstMatch
+            // Discover rows can push the Sources section below the fold.
+            scrollTo(row)
             XCTAssertTrue(row.waitForExistence(timeout: 20), "\(name) not in installed sources")
             row.tap()
             XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 10))
@@ -281,6 +283,18 @@ final class WalkthroughUITests: XCTestCase {
             return
         }
         XCTFail("None of \(elements.map(\.description)) appeared")
+    }
+
+    /// A long vertical drag along the left edge, clear of horizontal carousels' gestures.
+    private func drag(from: CGFloat, to: CGFloat) {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: from))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: to))
+        start.press(forDuration: 0.05, thenDragTo: end)
+        sleep(1)
+    }
+
+    private func scrollTo(_ element: XCUIElement) {
+        for _ in 0..<10 where !(element.exists && element.isHittable) { drag(from: 0.8, to: 0.3) }
     }
 
     private func goBack() {
