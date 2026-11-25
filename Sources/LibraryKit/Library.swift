@@ -30,6 +30,10 @@ public struct WorkSettings: Codable, Sendable, Hashable {
     public var skipNotes: Bool
     /// Web novels: which translation group to read when several posted the same chapter.
     public var preferredGroup: String?
+    /// Text works: this work's own theme, font and spacing. Nil uses the app's.
+    public var readerStyle: ReaderStyle?
+    /// Vertical strips: this work's auto-scroll speed in points a second. Nil uses the app's.
+    public var autoScrollSpeed: Double?
 
     public init(readingMode: ReadingMode? = nil, autoDownload: Bool? = nil, skipNotes: Bool = false, preferredGroup: String? = nil) {
         self.readingMode = readingMode
