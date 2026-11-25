@@ -11,6 +11,9 @@ struct BrowseView: View {
     @State private var query = ""
     @State private var results: [(source: InstalledSource, page: SearchPage?, error: String?, verify: VerificationRequest?)] = []
     @State private var searching = false
+    /// Bumped by each search and by clearing the field, so a slow source (AO3 waits three
+    /// seconds between requests) can't hold the spinner up after the search is gone.
+    @State private var searchGeneration = 0
     @State private var addingRepo = false
     @State private var path = NavigationPath()
     @AppStorage("browse.mergeResults") private var mergeResults = true
@@ -28,7 +31,13 @@ struct BrowseView: View {
             .navigationTitle("Browse")
             .searchable(text: $query, prompt: "Search all sources")
             .onSubmit(of: .search) { Task { await searchAll() } }
-            .onChange(of: query) { _, value in if value.isEmpty { results = [] } }
+            .onChange(of: query) { _, value in
+                if value.isEmpty {
+                    searchGeneration += 1
+                    searching = false
+                    results = []
+                }
+            }
             .onChange(of: model.verifiedCount) { _, _ in
                 if results.contains(where: { $0.verify != nil }) { Task { await searchAll() } }
             }
@@ -69,6 +78,7 @@ struct BrowseView: View {
                         }
                     }
                 }
+                .accessibilityIdentifier("browse.source")
             }
         } header: {
             Text("Sources")
@@ -97,6 +107,7 @@ struct BrowseView: View {
                         }
                     }
                 }
+                .accessibilityIdentifier("browse.repo")
             }
             .onDelete { offsets in offsets.map { model.repos[$0] }.forEach { model.removeRepo($0) } }
             Button { addingRepo = true } label: {
@@ -162,6 +173,7 @@ struct BrowseView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
+                .accessibilityIdentifier("work.result")
                 .contextMenu {
                     ForEach(result.all, id: \.key) { hit in
                         Button("Open on \(model.sourceName(hit.sourceID))") { path.append(route(hit)) }
@@ -213,6 +225,7 @@ struct BrowseView: View {
                         NavigationLink(value: WorkRoute(key: WorkKey(sourceID: result.source.id, workID: work.id), summary: work)) {
                             WorkCard(work: work, format: work.format ?? result.source.manifest.defaultFormat)
                         }
+                        .accessibilityIdentifier("work.result")
                     }
                     if page.results.count > 8 || page.hasMore {
                         NavigationLink("More from \(result.source.manifest.name)", value: result.source)
@@ -229,8 +242,10 @@ struct BrowseView: View {
     private func searchAll() async {
         let text = query.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
+        searchGeneration += 1
+        let generation = searchGeneration
         searching = true
-        defer { searching = false }
+        defer { if generation == searchGeneration { searching = false } }
         let sources = model.searchableSources
         results = sources.map { (source: $0, page: nil, error: nil, verify: nil) }
         await withTaskGroup(of: (String, SearchPage?, String?, URL?).self) { group in
@@ -245,6 +260,7 @@ struct BrowseView: View {
                 }
             }
             for await (id, page, error, verifyURL) in group {
+                guard generation == searchGeneration else { continue }
                 if let i = results.firstIndex(where: { $0.source.id == id }) {
                     results[i].page = page
                     results[i].error = error ?? (page == nil ? "Search failed" : nil)
@@ -327,6 +343,7 @@ struct SourceSearchView: View {
                 NavigationLink(value: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work)) {
                     WorkCard(work: work, format: work.format ?? source.manifest.defaultFormat)
                 }
+                .accessibilityIdentifier("work.result")
             }
             if hasMore {
                 Button(loading ? "Loading..." : "Load more") { Task { await run(page: page + 1) } }
@@ -384,6 +401,11 @@ struct FilterChip: View {
     private var selected: [String] { values[filter.id] ?? [] }
 
     var body: some View {
+        control.accessibilityIdentifier("filter.chip")
+    }
+
+    @ViewBuilder
+    private var control: some View {
         switch filter.type {
         case .toggle:
             Button { values[filter.id] = selected.isEmpty ? ["true"] : [] } label: { chip(filter.label, on: !selected.isEmpty) }

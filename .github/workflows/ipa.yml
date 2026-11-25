@@ -1,0 +1,89 @@
+name: Build IPA
+
+# Builds an unsigned IPA for sideloading with AltStore or Sideloadly,
+# which re-sign it with your own Apple ID on install.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths-ignore: ['**.md', 'examples/**', 'sdk/**']
+
+concurrency:
+  group: ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          cd App && xcodegen generate
+
+      - name: Build for iPhone (unsigned)
+        run: |
+          cd App
+          status=0
+          xcodebuild -project Shelfbound.xcodeproj -scheme Shelfbound \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > "$RUNNER_TEMP/build.log" 2>&1 || status=$?
+          grep -E '\*\* BUILD' "$RUNNER_TEMP/build.log" || true
+          if [ "$status" -ne 0 ]; then
+            echo "::group::Compile errors"
+            grep -E ': error:' "$RUNNER_TEMP/build.log" | sort -u | head -400
+            echo "::endgroup::"
+            tail -60 "$RUNNER_TEMP/build.log"
+            exit "$status"
+          fi
+
+      - name: Package the IPA
+        run: |
+          APP="$RUNNER_TEMP/dd/Build/Products/Release-iphoneos/Shelfbound.app"
+          test -x "$APP/Shelfbound"
+          ls "$APP/PlugIns" || true
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/ipa/Payload/"
+          cd "$RUNNER_TEMP/ipa" && zip -qry "$GITHUB_WORKSPACE/Shelfbound.ipa" Payload
+          ls -lh "$GITHUB_WORKSPACE/Shelfbound.ipa"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Shelfbound-ipa
+          path: Shelfbound.ipa
+          if-no-files-found: error
+
+      # A fixed "latest-build" pre-release, so the newest IPA has a direct link
+      # that opens on the phone: .../releases/download/latest-build/Shelfbound.ipa
+      - name: Update the latest-build release
+        # Throwaway check branches don't replace the IPA people install.
+        if: ${{ !startsWith(github.ref_name, 'claude/ui-check') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag -f latest-build && git push -f origin latest-build
+          gh release view latest-build >/dev/null 2>&1 || \
+            gh release create latest-build --prerelease --title "Latest build" \
+              --notes "Unsigned IPA of the newest build. Install with AltStore or Sideloadly."
+          gh release upload latest-build Shelfbound.ipa --clobber
+          gh release edit latest-build --notes "Unsigned IPA built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Install with AltStore or Sideloadly."
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-log
+          path: ${{ runner.temp }}/build.log
+          if-no-files-found: ignore

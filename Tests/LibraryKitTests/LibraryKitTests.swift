@@ -7,7 +7,7 @@ private func chapters(_ n: Int, prefix: String = "c") -> [Chapter] {
     (1...n).map { Chapter(id: "\(prefix)\($0)", title: "Chapter \($0)", number: Double($0)) }
 }
 
-private func record(_ id: String, format: WorkFormat, fandom: String? = nil, inLibrary: Bool = true) -> WorkRecord {
+private func makeRecord(_ id: String, format: WorkFormat, fandom: String? = nil, inLibrary: Bool = true) -> WorkRecord {
     var r = WorkRecord(
         key: WorkKey(sourceID: "src", workID: id),
         summary: WorkSummary(id: id, title: id.capitalized, fandoms: fandom.map { [$0] }),
@@ -19,12 +19,12 @@ private func record(_ id: String, format: WorkFormat, fandom: String? = nil, inL
 final class LibraryKitTests: XCTestCase {
     func testGroupsByFandomWithSeriesAsTheirOwnFandom() {
         let records = [
-            record("orbit", format: .fic, fandom: "Starfall Academy (Anime)"),
-            record("starfall academy", format: .manga),
-            record("crown", format: .fic, fandom: "The Gilded Court - Mara Venn"),
-            record("ink", format: .fic, fandom: "The Gilded Court"),
-            record("hidden", format: .fic, fandom: "Nope", inLibrary: false),
-            record("loose", format: .fic),
+            makeRecord("orbit", format: .fic, fandom: "Starfall Academy (Anime)"),
+            makeRecord("starfall academy", format: .manga),
+            makeRecord("crown", format: .fic, fandom: "The Gilded Court - Mara Venn"),
+            makeRecord("ink", format: .fic, fandom: "The Gilded Court"),
+            makeRecord("hidden", format: .fic, fandom: "Nope", inLibrary: false),
+            makeRecord("loose", format: .fic),
         ]
         let sections = LibraryLayout.sections(records, filter: .all, grouping: .fandom, sort: .title)
         XCTAssertEqual(sections.map(\.title), ["Starfall Academy", "The Gilded Court", "Other"])
@@ -36,7 +36,7 @@ final class LibraryKitTests: XCTestCase {
     }
 
     func testFirstFetchMarksNothingNewThenNewChaptersAreBadged() {
-        var r = record("hollow", format: .manhwa)
+        var r = makeRecord("hollow", format: .manhwa)
         XCTAssertEqual(UpdateChecker.apply(chapters(3), to: &r), [])
         XCTAssertEqual(r.unreadNewCount, 0)
 
@@ -51,7 +51,7 @@ final class LibraryKitTests: XCTestCase {
     }
 
     func testContinueChapterMovesOnWhenFinished() {
-        var r = record("a", format: .manga)
+        var r = makeRecord("a", format: .manga)
         r.chapters = chapters(4)
         XCTAssertEqual(r.continueChapter?.id, "c1")
         r.position = ReadingPosition(chapterID: "c2", chapterTitle: "Chapter 2", progress: 0.5)
@@ -75,7 +75,7 @@ final class LibraryKitTests: XCTestCase {
     }
 
     func testUpdateCheckRunsAcrossSourcesAndReportsFailures() async {
-        var a = record("a", format: .manga)
+        var a = makeRecord("a", format: .manga)
         a.chapters = chapters(1)
         var b = WorkRecord(key: WorkKey(sourceID: "other", workID: "b"), summary: WorkSummary(id: "b", title: "B"), format: .fic)
         b.inLibrary = true

@@ -6,11 +6,13 @@ on:
 
 jobs:
   swift:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Use Xcode 15.4
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+      # The translation reader needs the iOS 18 SDK or newer.
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
       - name: Package tests
         run: swift test
       - name: Build app for simulator

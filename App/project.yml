@@ -14,6 +14,8 @@ targets:
   Shelfbound:
     type: application
     platform: iOS
+    scheme:
+      testTargets: [ShelfboundUITests]
     sources:
       - Shelfbound
       - Shared
@@ -90,3 +92,17 @@ targets:
       properties:
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+
+  ShelfboundUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - ShelfboundUITests
+    dependencies:
+      - target: Shelfbound
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.shelfbound.Shelfbound.UITests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        TEST_TARGET_NAME: Shelfbound
