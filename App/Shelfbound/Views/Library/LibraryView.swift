@@ -76,7 +76,7 @@ struct LibraryView: View {
         ContentUnavailableView {
             Label("Your library is empty", systemImage: "books.vertical")
         } description: {
-            Text("Find something in Browse and tap the heart to keep it here. Fics, manga and manhwa all land on one shelf.")
+            Text("Find something in Discover or Search and tap the heart to keep it here. Fics, manga and manhwa all land on one shelf.")
         }
         .padding(.top, 80)
     }

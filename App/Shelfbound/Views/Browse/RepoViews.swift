@@ -129,7 +129,7 @@ struct RepoDetailView: View {
                 } header: {
                     Text("Available sources")
                 } footer: {
-                    Text("Installed sources check for updates when you open Browse. You can remove a source at any time.")
+                    Text("Installed sources check for updates when you open Discover. You can remove a source at any time.")
                 }
             } else if error == nil {
                 HStack { Spacer(); ProgressView(); Spacer() }

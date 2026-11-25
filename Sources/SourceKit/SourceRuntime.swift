@@ -77,7 +77,16 @@ public final class SourceRuntime: @unchecked Sendable {
     /// Filters from the optional `getFilters()`. Empty when the source has none.
     public func getFilters() async throws -> [SearchFilter] {
         guard implements("getFilters") else { return [] }
-        return try await invoke("getFilters", [])
+        let filters: LossyArray<SearchFilter> = try await invoke("getFilters", [])
+        return filters.elements
+    }
+
+    /// Names for a `tags` filter that match what the person typed, from the optional
+    /// `suggest(filterID, text)`. Empty when the source has none.
+    public func suggest(filterID: String, text: String) async throws -> [SearchFilter.Option] {
+        guard implements("suggest") else { return [] }
+        let options: LossyArray<SearchFilter.Option> = try await invoke("suggest", [filterID, text])
+        return options.elements
     }
 
     /// Browsable lists from the optional `getListings()`. Empty when the source has none.
@@ -283,7 +292,7 @@ public final class SourceRuntime: @unchecked Sendable {
             }
         }
         for name in ["getFilters", "getListings", "getListing", "resolveLink", "getLatest", "idFromURL",
-                     "getAccount", "getAccountLists", "getAccountList", "setWorkState"] {
+                     "getAccount", "getAccountLists", "getAccountList", "setWorkState", "suggest"] {
             if let fn = source.objectForKeyedSubscript(name), !fn.isUndefined, !fn.isNull {
                 optionalFunctions.insert(name)
             }

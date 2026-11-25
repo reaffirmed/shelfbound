@@ -35,6 +35,9 @@ enum Prelude {
           native.verify(String(url));
           throw new Error("Open " + url + " in the browser to continue.");
         },
+        // Filter kinds this app can show. Apps before 0.4 had only the first three, and
+        // no list here, so a source offers the rest only when they're listed.
+        filterTypes: Object.freeze(["select", "multi", "toggle", "text", "range", "tags"]),
         settings: Object.freeze({
           get(key) {
             const value = native.setting(String(key));

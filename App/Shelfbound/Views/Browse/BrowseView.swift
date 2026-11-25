@@ -4,10 +4,15 @@ import ShelfCore
 import SourceKit
 import SwiftUI
 
-/// Sources and repos, with search across every installed source.
+/// The Discover and Search tabs. Discover shows each source's browse lists, the
+/// installed sources and the repositories they come from. Search looks through every
+/// installed source at once, or one source with its filters.
 @MainActor
 struct BrowseView: View {
+    enum Mode { case discover, search }
+
     @Environment(AppModel.self) private var model
+    var mode: Mode = .discover
     @State private var query = ""
     @State private var results: [(source: InstalledSource, page: SearchPage?, error: String?, verify: VerificationRequest?)] = []
     @State private var searching = false
@@ -24,19 +29,20 @@ struct BrowseView: View {
     var body: some View {
         NavigationStack(path: $path) {
             List {
-                if !results.isEmpty || searching {
-                    searchResults
-                } else {
-                    // Sources first, so a source is one tap away; the browse rows follow.
-                    sources
+                switch mode {
+                case .search:
+                    if !results.isEmpty || searching { searchResults } else { sources }
+                case .discover:
+                    // The browse rows first, like a storefront; sources and repos follow.
                     ForEach(discover) { item in
                         ListingSection(source: item.source, listing: item.listing, showSourceName: true, refreshToken: discoverToken)
                     }
+                    sources
                     repositories
                 }
             }
-            .navigationTitle("Browse")
-            .searchable(text: $query, prompt: "Search all sources")
+            .navigationTitle(mode == .search ? "Search" : "Discover")
+            .modifier(SearchAllField(enabled: mode == .search, query: $query))
             .onSubmit(of: .search) { Task { await searchAll() } }
             .onChange(of: query) { _, value in
                 if value.isEmpty {
@@ -49,9 +55,11 @@ struct BrowseView: View {
                 if results.contains(where: { $0.verify != nil }) { Task { await searchAll() } }
             }
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { addingRepo = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("Add repository")
+                if mode == .discover {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { addingRepo = true } label: { Image(systemName: "plus") }
+                            .accessibilityLabel("Add repository")
+                    }
                 }
             }
             .sheet(isPresented: $addingRepo) { NavigationStack { AddRepoView() } }
@@ -59,8 +67,8 @@ struct BrowseView: View {
                 await model.refreshRepos()
                 discoverToken += 1
             }
-            .task { await model.refreshRepos() }
-            .task(id: model.searchableSources.map(\.id)) { await loadDiscover() }
+            .task { if mode == .discover { await model.refreshRepos() } }
+            .task(id: model.searchableSources.map(\.id)) { if mode == .discover { await loadDiscover() } }
             .navigationDestination(for: InstalledSource.self) { SourceSearchView(source: $0) }
             .navigationDestination(for: SavedRepo.self) { RepoDetailView(repo: $0) }
             .navigationDestination(for: WorkRoute.self) { WorkDetailView(route: $0) }
@@ -105,9 +113,11 @@ struct BrowseView: View {
                 .accessibilityIdentifier("browse.source")
             }
         } header: {
-            Text("Sources")
+            Text(mode == .search ? "Search one source" : "Sources")
         } footer: {
-            Text("Fics, manga and manhwa all show up in one library, whichever source they come from.")
+            Text(mode == .search
+                 ? "Type above to search every source at once, or pick one to search it with all of its filters."
+                 : "Fics, manga and manhwa all show up in one library, whichever source they come from.")
         }
     }
 
@@ -339,12 +349,29 @@ struct DiscoverItem: Identifiable {
     var id: String { source.id + "/" + listing.id }
 }
 
+/// The search field, only on the Search tab.
+private struct SearchAllField: ViewModifier {
+    let enabled: Bool
+    @Binding var query: String
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search all sources")
+        } else {
+            content
+        }
+    }
+}
+
 /// Search one source, with its filters as chips. Before you search, it shows the
 /// source's browse lists ("Freshly updated", "Trending"...) when it has them.
 @MainActor
 struct SourceSearchView: View {
     @Environment(AppModel.self) private var model
     let source: InstalledSource
+    /// Filters to start with, as when a tag on a work's page opens this search.
+    var initialValues: [String: [String]]? = nil
+    var title: String? = nil
 
     @State private var query = ""
     @State private var results: [WorkSummary] = []
@@ -361,10 +388,27 @@ struct SourceSearchView: View {
     @State private var generation = 0
     /// The text of the last search that came back, to tell "nothing found" from "not searched yet".
     @State private var searchedText: String?
+    @State private var showingFilters = false
 
     /// Browse lists show until there's something typed or searched.
     private var showingListings: Bool {
-        !listings.isEmpty && query.isEmpty && results.isEmpty && error == nil && !loading
+        !listings.isEmpty && query.isEmpty && results.isEmpty && error == nil && !loading && searchedText == nil
+    }
+
+    /// Filters that aren't at their default, which make a search worth running even
+    /// with nothing typed.
+    private var activeFilters: Bool { filters.contains { $0.isActive(in: values) } }
+
+    private var activeCount: Int { filters.filter { $0.isActive(in: values) }.count }
+
+    /// Chips for the simple kinds, and for the others only once they're set.
+    private var chipFilters: [SearchFilter] {
+        filters.filter { filter in
+            switch filter.type {
+            case .select, .multi, .toggle: true
+            case .text, .range, .tags: filter.isActive(in: values)
+            }
+        }
     }
 
     /// A new search (a filter changed) while the old results are still on screen.
@@ -398,7 +442,7 @@ struct SourceSearchView: View {
         .scrollContentBackground(.hidden)
         .background(Color(.systemGroupedBackground))
         .safeAreaInset(edge: .top, spacing: 0) {
-            if !filters.isEmpty && !showingListings { filterBar }
+            if !filters.isEmpty { filterBar }
         }
         .overlay {
             if !loadedSetup {
@@ -408,8 +452,11 @@ struct SourceSearchView: View {
                     .controlSize(.large)
                     .padding(18)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            } else if results.isEmpty && error == nil && !showingListings, let searchedText, !query.isEmpty {
+            } else if results.isEmpty && error == nil && !showingListings, let searchedText, !searchedText.isEmpty {
                 ContentUnavailableView.search(text: searchedText)
+            } else if results.isEmpty && error == nil && !showingListings && searchedText != nil {
+                ContentUnavailableView("No matches", systemImage: "line.3.horizontal.decrease.circle",
+                                       description: Text("Try fewer filters."))
             } else if results.isEmpty && error == nil && !showingListings {
                 ContentUnavailableView(
                     "Search \(source.manifest.name)", systemImage: "magnifyingglass",
@@ -419,7 +466,7 @@ struct SourceSearchView: View {
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always))
         .onSubmit(of: .search) { Task { await run(page: 1) } }
         .onChange(of: query) { _, value in
-            if value.isEmpty {
+            if value.isEmpty && !activeFilters {
                 generation += 1
                 results = []
                 searchedText = nil
@@ -428,8 +475,14 @@ struct SourceSearchView: View {
                 loading = false
             }
         }
-        .onChange(of: values) { _, _ in if !query.isEmpty { Task { await run(page: 1) } } }
-        .navigationTitle(source.manifest.name)
+        .onChange(of: values) { _, _ in
+            guard loadedSetup else { return }
+            if !query.isEmpty || activeFilters || searchedText != nil { Task { await run(page: 1) } }
+        }
+        .sheet(isPresented: $showingFilters) {
+            FilterSheet(sourceID: source.id, filters: filters, values: values) { values = $0 }
+        }
+        .navigationTitle(title ?? source.manifest.name)
         .navigationBarTitleDisplayMode(.inline)
         .task { await setUp() }
         .browserVerification($verifying)
@@ -442,7 +495,19 @@ struct SourceSearchView: View {
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(filters) { filter in FilterChip(filter: filter, values: $values) }
+                Button { showingFilters = true } label: {
+                    FilterChipLabel(
+                        text: activeCount == 0 ? "Filters" : "Filters · \(activeCount)", on: false,
+                        systemImage: "line.3.horizontal.decrease")
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("filters.all")
+                ForEach(chipFilters) { filter in
+                    switch filter.type {
+                    case .select, .multi, .toggle: FilterChip(filter: filter, values: $values)
+                    case .text, .range, .tags: FilterSummaryChip(filter: filter, values: values) { showingFilters = true }
+                    }
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
@@ -454,15 +519,25 @@ struct SourceSearchView: View {
         defer { loadedSetup = true }
         guard !loadedSetup, let runtime = try? model.runtime(for: source.id) else { return }
         filters = (try? await runtime.getFilters()) ?? []
-        for filter in filters where values[filter.id] == nil {
-            values[filter.id] = filter.defaultValue ?? []
+        var start = values
+        for filter in filters where start[filter.id] == nil {
+            start[filter.id] = filter.defaultValue ?? []
         }
-        listings = (try? await runtime.getListings()) ?? []
+        if let initialValues {
+            start.merge(initialValues) { _, new in new }
+        } else {
+            listings = (try? await runtime.getListings()) ?? []
+        }
+        values = start
+        if initialValues != nil {
+            searchedText = ""
+            await run(page: 1)
+        }
     }
 
     private func run(page: Int) async {
         let text = query.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty || activeFilters || searchedText != nil else { return }
         generation += 1
         let mine = generation
         if page == 1 { self.page = 1 }
@@ -534,6 +609,8 @@ struct FilterChip: View {
                 chip(selected.isEmpty ? filter.label : "\(filter.label) · \(selected.count)", on: !selected.isEmpty)
             }
             .animation(nil, value: selected)
+        case .text, .range, .tags:
+            EmptyView()
         }
     }
 
@@ -545,14 +622,6 @@ struct FilterChip: View {
     /// The same weight on and off, and no animation when the text changes: a new value
     /// replaces the old one at once instead of the chip sliding to its new width.
     private func chip(_ text: String, on: Bool) -> some View {
-        Text(text)
-            .font(.subheadline.weight(.medium))
-            .lineLimit(1)
-            .fixedSize()
-            .contentTransition(.identity)
-            .foregroundStyle(on ? Color.white : Color.primary)
-            .padding(.horizontal, 12).padding(.vertical, 7)
-            .background(Capsule().fill(on ? Color.shelfAccent : Color(.tertiarySystemFill)))
-            .transaction { $0.animation = nil }
+        FilterChipLabel(text: text, on: on)
     }
 }

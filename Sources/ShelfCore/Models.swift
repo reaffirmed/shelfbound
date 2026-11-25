@@ -473,10 +473,19 @@ public struct SourceListing: Codable, Sendable, Hashable, Identifiable {
 }
 
 /// A search filter a source offers through `getFilters()`. Values go back to
-/// `search(query, page, filters)` as `{ [id]: [optionID, ...] }`: one entry for
-/// `select`, any number for `multi`, and `["true"]` or nothing for `toggle`.
+/// `search(query, page, filters)` as `{ [id]: [String] }`:
+/// - `select`: one option ID. `multi`: any number of option IDs.
+/// - `toggle`: `["true"]`, or nothing.
+/// - `text`: the text typed, as one entry.
+/// - `range`: `[min, max]`, either of which may be "" for no limit.
+/// - `tags`: the names to include. When `excludable`, the names to leave out go
+///   under `"<id>.exclude"`. Names come from `options`, from the source's optional
+///   `suggest(filterID, text)` when `suggests` is set, or from what the person types.
+///
+/// Apps before 0.4 only know `select`, `multi` and `toggle`, so sources check
+/// `host.filterTypes` before offering the others.
 public struct SearchFilter: Codable, Sendable, Hashable, Identifiable {
-    public enum Kind: String, Codable, Sendable { case select, multi, toggle }
+    public enum Kind: String, Codable, Sendable, CaseIterable { case select, multi, toggle, text, range, tags }
 
     public var id: String
     public var label: String
@@ -484,6 +493,18 @@ public struct SearchFilter: Codable, Sendable, Hashable, Identifiable {
     public var options: [Option]?
     /// Option IDs selected when the user hasn't picked anything.
     public var defaultValue: [String]?
+    /// Grey hint text in a `text` or `tags` field, or the unit of a `range` ("words").
+    public var placeholder: String?
+    /// `tags` only: whether names can be left out as well as included.
+    public var excludable: Bool?
+    /// `tags` only: whether the source's `suggest(filterID, text)` offers names as you type.
+    public var suggests: Bool?
+    /// A heading the filter screen groups this filter under, like "Tags" or "Stats".
+    public var group: String?
+    /// The `Work` field whose values this filter searches by: "fandoms", "relationships",
+    /// "characters", "tags", "warnings", "categories", "rating", "language" or "authors".
+    /// Tapping one of those on a work's page then searches the source for it.
+    public var workField: String?
 
     public struct Option: Codable, Sendable, Hashable, Identifiable {
         public var id: String
@@ -495,15 +516,103 @@ public struct SearchFilter: Codable, Sendable, Hashable, Identifiable {
         }
     }
 
-    private enum CodingKeys: String, CodingKey { case id, label, type, options, defaultValue = "default" }
+    private enum CodingKeys: String, CodingKey {
+        case id, label, type, options, defaultValue = "default", placeholder, excludable, suggests, group, workField
+    }
 
-    public init(id: String, label: String, type: Kind, options: [Option]? = nil, defaultValue: [String]? = nil) {
+    public init(
+        id: String, label: String, type: Kind, options: [Option]? = nil, defaultValue: [String]? = nil,
+        placeholder: String? = nil, excludable: Bool? = nil, suggests: Bool? = nil, group: String? = nil,
+        workField: String? = nil
+    ) {
         self.id = id
         self.label = label
         self.type = type
         self.options = options
         self.defaultValue = defaultValue
+        self.placeholder = placeholder
+        self.excludable = excludable
+        self.suggests = suggests
+        self.group = group
+        self.workField = workField
     }
+
+    /// The key that holds a `tags` filter's left-out names.
+    public var excludeKey: String { id + ".exclude" }
+
+    /// Whether `values` differ from this filter's default.
+    public func isActive(in values: [String: [String]]) -> Bool {
+        let current = (values[id] ?? []).filter { !$0.isEmpty }
+        let base = (defaultValue ?? []).filter { !$0.isEmpty }
+        if type == .tags, !(values[excludeKey] ?? []).isEmpty { return true }
+        return current != base
+    }
+}
+
+/// Turns a tag on a work's page into search filters, using the filter that declares
+/// that work field.
+public enum TagSearch {
+    /// The filter a tag in `field` can search by, if the source has one that can take it.
+    public static func filter(for tag: String, field: String, in filters: [SearchFilter], exclude: Bool = false) -> SearchFilter? {
+        filters.first { filter in
+            guard filter.workField == field else { return false }
+            switch filter.type {
+            case .tags: return !exclude || filter.excludable == true
+            case .select: return !exclude && option(for: tag, in: filter) != nil
+            case .multi: return !exclude && option(for: tag, in: filter) != nil
+            case .text: return !exclude
+            case .toggle, .range: return false
+            }
+        }
+    }
+
+    /// The filter values for a search for works with `tag`, or without it when `exclude`
+    /// is set. Every other filter keeps its default.
+    public static func values(for tag: String, field: String, in filters: [SearchFilter], exclude: Bool = false) -> [String: [String]]? {
+        guard let filter = filter(for: tag, field: field, in: filters, exclude: exclude) else { return nil }
+        var values: [String: [String]] = [:]
+        for f in filters { values[f.id] = f.defaultValue ?? [] }
+        switch filter.type {
+        case .tags:
+            let name = option(for: tag, in: filter)?.id ?? tag
+            values[exclude ? filter.excludeKey : filter.id] = [name]
+        case .select, .multi:
+            guard let option = option(for: tag, in: filter) else { return nil }
+            values[filter.id] = [option.id]
+        case .text:
+            values[filter.id] = [tag]
+        case .toggle, .range:
+            return nil
+        }
+        return values
+    }
+
+    /// The option whose label or ID matches the tag, ignoring case.
+    static func option(for tag: String, in filter: SearchFilter) -> SearchFilter.Option? {
+        let wanted = tag.trimmingCharacters(in: .whitespaces).lowercased()
+        return filter.options?.first { $0.label.lowercased() == wanted || $0.id.lowercased() == wanted }
+    }
+}
+
+/// Decodes an array, dropping elements it can't read, so one filter of a kind this
+/// version doesn't know doesn't hide all the others.
+public struct LossyArray<Element: Decodable>: Decodable {
+    public var elements: [Element]
+
+    public init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        var elements: [Element] = []
+        while !container.isAtEnd {
+            if let element = try? container.decode(Element.self) {
+                elements.append(element)
+            } else {
+                _ = try? container.decode(Skip.self)
+            }
+        }
+        self.elements = elements
+    }
+
+    private struct Skip: Decodable {}
 }
 
 /// A term the reader keeps for a work, mostly for web novels: names, places, cultivation ranks.
