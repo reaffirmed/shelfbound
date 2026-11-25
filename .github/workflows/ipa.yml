@@ -12,6 +12,9 @@ concurrency:
   group: ipa-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   ipa:
     runs-on: macos-15
@@ -62,6 +65,19 @@ jobs:
           name: Shelfbound-ipa
           path: Shelfbound.ipa
           if-no-files-found: error
+
+      # A fixed "latest-build" pre-release, so the newest IPA has a direct link
+      # that opens on the phone: .../releases/download/latest-build/Shelfbound.ipa
+      - name: Update the latest-build release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag -f latest-build && git push -f origin latest-build
+          gh release view latest-build >/dev/null 2>&1 || \
+            gh release create latest-build --prerelease --title "Latest build" \
+              --notes "Unsigned IPA of the newest build. Install with AltStore or Sideloadly."
+          gh release upload latest-build Shelfbound.ipa --clobber
+          gh release edit latest-build --notes "Unsigned IPA built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Install with AltStore or Sideloadly."
 
       - uses: actions/upload-artifact@v4
         if: failure()
