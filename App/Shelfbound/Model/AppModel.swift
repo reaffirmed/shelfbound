@@ -69,6 +69,7 @@ final class AppModel {
     @ObservationIgnored private let libraryFile: LibraryFile?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private let resolverBox: ResolverBox
+    @ObservationIgnored private let widgets = WidgetBridge()
 
     private enum Keys {
         static let repos = "repos"
@@ -113,6 +114,11 @@ final class AppModel {
 
     func handle(url: URL) {
         // shelfbound://add-repo?url=https://example.github.io/repo
+        // shelfbound://open?source=…&work=… from a widget
+        if let key = WidgetSnapshot.workKey(from: url) {
+            pendingOpen = key
+            return
+        }
         guard url.scheme == "shelfbound", url.host == "add-repo",
               let target = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                 .queryItems?.first(where: { $0.name == "url" })?.value
@@ -379,6 +385,7 @@ final class AppModel {
     private func downloadsChanged(_ snapshot: DownloadSnapshot) {
         let newlyBlocked = Set(snapshot.blockedHosts).subtracting(downloads.blockedHosts)
         downloads = snapshot
+        widgets.update(downloads: snapshot)
         if !newlyBlocked.isEmpty, UIApplication.shared.applicationState != .active {
             Notifications.postVerificationNeeded(hosts: newlyBlocked.sorted())
         }
@@ -482,6 +489,7 @@ final class AppModel {
         // Works only browsed (not saved, never read, no glossary) aren't worth keeping.
         state.records = state.records.filter { $0.value.inLibrary || $0.value.lastReadAt != nil || !$0.value.glossary.isEmpty }
         try? libraryFile?.save(state)
+        widgets.update(library: library, badge: settings.badgeNewChapters)
     }
 
     private func save<T: Encodable>(_ value: T, as key: String) {

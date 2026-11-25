@@ -16,7 +16,9 @@ targets:
     platform: iOS
     sources:
       - Shelfbound
+      - Shared
     dependencies:
+      - target: ShelfboundWidgets
       - package: ShelfKit
         product: ShelfCore
       - package: ShelfKit
@@ -39,9 +41,14 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_CFBundleDisplayName: Shelfbound
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+    entitlements:
+      path: Shelfbound/Resources/Shelfbound.entitlements
+      properties:
+        com.apple.security.application-groups: [group.app.shelfbound]
     info:
       path: Shelfbound/Resources/Info.plist
       properties:
+        NSSupportsLiveActivities: true
         CFBundleURLTypes:
           - CFBundleURLName: app.shelfbound.links
             CFBundleURLSchemes: [shelfbound]
@@ -49,3 +56,33 @@ targets:
         BGTaskSchedulerPermittedIdentifiers:
           - app.shelfbound.Shelfbound.refresh
           - app.shelfbound.Shelfbound.catchup
+
+  ShelfboundWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - ShelfboundWidgets
+      - Shared
+    dependencies:
+      - package: ShelfKit
+        product: ShelfCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.shelfbound.Shelfbound.Widgets
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Shelfbound
+    entitlements:
+      path: ShelfboundWidgets/ShelfboundWidgets.entitlements
+      properties:
+        com.apple.security.application-groups: [group.app.shelfbound]
+    info:
+      path: ShelfboundWidgets/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
