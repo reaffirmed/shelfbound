@@ -61,6 +61,8 @@ public struct WorkRecord: Codable, Sendable, Hashable, Identifiable {
     public var lastCheckedAt: Date?
     public var settings: WorkSettings
     public var glossary: [GlossaryEntry]
+    /// Passages marked in text chapters. Optional so library files from before highlights still load.
+    public var highlights: [Highlight]?
 
     public var id: String { key.id }
 

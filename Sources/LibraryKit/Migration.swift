@@ -35,6 +35,7 @@ public enum Migration {
         next.lastCheckedAt = Date()
         next.readChapterIDs = ChapterMatcher.ids(in: chapters, numbered: readNumbers(record))
         next.glossary = record.glossary
+        next.highlights = record.highlights.map { remap($0, from: record.chapters, onto: chapters) }
         next.settings = record.settings
         // Group names belong to the old source's chapter list.
         next.settings.preferredGroup = nil
@@ -44,6 +45,23 @@ public enum Migration {
                 page: nil, updatedAt: record.position?.updatedAt ?? Date())
         }
         return next
+    }
+
+    /// Points highlights at the new source's chapter with the same number. Ones that
+    /// can't be matched keep their old chapter and still show in the work's list.
+    private static func remap(_ highlights: [Highlight], from old: [Chapter], onto chapters: [Chapter]) -> [Highlight] {
+        let oldNumbers = Dictionary(old.compactMap { c in ChapterMatcher.number(of: c).map { (c.id, $0) } }, uniquingKeysWith: { a, _ in a })
+        var byNumber: [Double: Chapter] = [:]
+        for chapter in chapters {
+            if let n = ChapterMatcher.number(of: chapter), byNumber[n] == nil { byNumber[n] = chapter }
+        }
+        return highlights.map { h in
+            guard let n = oldNumbers[h.chapterID], let chapter = byNumber[n] else { return h }
+            var moved = h
+            moved.chapterID = chapter.id
+            moved.chapterTitle = chapter.title
+            return moved
+        }
     }
 
     private static func readNumbers(_ record: WorkRecord) -> Set<Double> {

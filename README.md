@@ -76,6 +76,10 @@ Settings › Import library reads a Paperback backup (`.pas4`, a zip), an Aidoku
 
 The app uses [ZIPFoundation](https://github.com/weichsel/ZIPFoundation) (MIT) to open Paperback backups.
 
+## Highlights and notes
+
+In a fic or novel chapter, select text and choose **Highlight** or **Add Note**. Tap a highlight to edit its note, share it as a quote, or delete it. A work's page lists all its highlights under **Highlights and notes**, and **Export** shares them as Markdown. Highlights are stored with a little text either side, so they stay put if the source changes a chapter's markup, and they follow a work when it moves to another source.
+
 ## Content policy
 
 Shelfbound doesn't host content or list repos. Only add sources for sites whose terms allow it, and respect their rate limits and access rules.

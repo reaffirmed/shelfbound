@@ -19,6 +19,7 @@ struct WorkDetailView: View {
     @State private var reading: ReaderRequest?
     @State private var newestFirst = false
     @State private var showingGlossary = false
+    @State private var showingHighlights = false
 
     private var key: WorkKey { route.key }
     private var record: WorkRecord? { model.record(key) }
@@ -76,6 +77,9 @@ struct WorkDetailView: View {
         }
         .sheet(isPresented: $showingGlossary) {
             NavigationStack { GlossaryView(key: key) }
+        }
+        .sheet(isPresented: $showingHighlights) {
+            NavigationStack { HighlightsView(key: key) }
         }
     }
 
@@ -294,6 +298,15 @@ struct WorkDetailView: View {
                             Label("Glossary", systemImage: "character.book.closed")
                             Spacer()
                             Text("\(record.glossary.count) terms").foregroundStyle(.secondary)
+                        }
+                    }
+                    Button {
+                        showingHighlights = true
+                    } label: {
+                        HStack {
+                            Label("Highlights and notes", systemImage: "highlighter")
+                            Spacer()
+                            Text("\(record.highlights?.count ?? 0)").foregroundStyle(.secondary)
                         }
                     }
                 }
