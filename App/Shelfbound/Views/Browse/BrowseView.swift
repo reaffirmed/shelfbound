@@ -69,6 +69,7 @@ struct BrowseView: View {
                         }
                     }
                 }
+                .accessibilityIdentifier("browse.source")
             }
         } header: {
             Text("Sources")

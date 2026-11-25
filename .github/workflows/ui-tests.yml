@@ -8,6 +8,9 @@ on:
     branches: ['claude/**']
     paths-ignore: ['**.md', 'examples/**', 'sdk/**']
 
+permissions:
+  contents: write
+
 concurrency:
   group: ui-tests-${{ github.ref }}
   cancel-in-progress: true
@@ -115,3 +118,26 @@ jobs:
           name: ui-test-screenshots
           path: ${{ runner.temp }}/out
           if-no-files-found: warn
+
+      # Also push the screenshots (not the video) to a ui-screenshots/<branch> branch,
+      # so they can be browsed on GitHub without downloading the artifact.
+      - name: Publish screenshots to a branch
+        if: always()
+        run: |
+          BR="ui-screenshots/${GITHUB_REF_NAME}"
+          D="$RUNNER_TEMP/shots-repo"
+          rm -rf "$D" && mkdir -p "$D" && cd "$D"
+          git init -q && git checkout -q --orphan "$BR"
+          cp "$RUNNER_TEMP"/out/screenshots/*.png . 2>/dev/null || true
+          cp "$RUNNER_TEMP"/out/screenshots/*.txt . 2>/dev/null || true
+          cp "$RUNNER_TEMP"/out/test.log . 2>/dev/null || true
+          {
+            echo "# UI test screenshots"
+            echo
+            echo "From ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}, run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            for f in *.png; do [ -e "$f" ] && printf '### %s\n\n![](%s)\n\n' "${f%.png}" "$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$f")"; done
+          } > README.md
+          git add -A
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" commit -qm "UI screenshots for ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BR"
