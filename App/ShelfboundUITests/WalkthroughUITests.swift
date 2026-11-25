@@ -138,6 +138,23 @@ final class WalkthroughUITests: XCTestCase {
             sleep(1)
         }
 
+        step("\(name): multi-select menu after one tap") {
+            let multi = app.buttons.matching(identifier: "filter.chip")
+                .matching(NSPredicate(format: "label CONTAINS[c] 'warning' OR label CONTAINS[c] 'genre' OR label CONTAINS[c] 'type'")).firstMatch
+            guard multi.exists else { return }
+            if !multi.isHittable { app.scrollViews.firstMatch.swipeLeft() }
+            multi.tap()
+            sleep(1)
+            let options = app.collectionViews.buttons
+            if options.count > 0 { options.element(boundBy: 0).tap() }
+            sleep(1) // the screenshot shows whether the menu stayed open
+        }
+
+        step("\(name): multi-select menu closed") {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)).tap()
+            sleep(1)
+        }
+
         guard network else {
             step("\(name): search (site unreachable from CI, not checked)") {
                 let search = app.searchFields.firstMatch
@@ -158,6 +175,20 @@ final class WalkthroughUITests: XCTestCase {
                 search.typeText("\n")
                 XCTAssertTrue(firstResult().waitForExistence(timeout: 45), "No \(name) results for \(query)")
             }
+            sleep(2)
+        }
+
+        step("\(name): results while re-sorting") {
+            let chip = app.buttons.matching(identifier: "filter.chip").firstMatch
+            guard chip.exists else { return }
+            chip.tap()
+            let options = app.collectionViews.buttons
+            if options.waitForExistence(timeout: 3), options.count > 2 { options.element(boundBy: 2).tap() }
+            // No wait: this screenshot should catch the old results dimmed while new ones load.
+        }
+
+        step("\(name): results after re-sorting") {
+            XCTAssertTrue(firstResult().waitForExistence(timeout: 45), "No \(name) results after re-sorting")
             sleep(2)
         }
 
