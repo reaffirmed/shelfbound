@@ -87,6 +87,8 @@ final class WalkthroughUITests: XCTestCase {
             drag(from: 0.85, to: 0.15)
             sleep(2)
         }
+        // Back to the top, where the search field is.
+        for _ in 0..<4 where !app.searchFields.firstMatch.isHittable { drag(from: 0.25, to: 0.9) }
 
         step("Search all sources") {
             app.tabBars.buttons["Browse"].tap()
