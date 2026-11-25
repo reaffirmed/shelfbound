@@ -92,6 +92,7 @@ struct BrowseView: View {
                         }
                     }
                 }
+                .accessibilityIdentifier("browse.source")
             }
         } header: {
             Text("Sources")
@@ -120,6 +121,7 @@ struct BrowseView: View {
                         }
                     }
                 }
+                .accessibilityIdentifier("browse.repo")
             }
             .onDelete { offsets in offsets.map { model.repos[$0] }.forEach { model.removeRepo($0) } }
             Button { addingRepo = true } label: {
@@ -185,6 +187,7 @@ struct BrowseView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
+                .accessibilityIdentifier("work.result")
                 .contextMenu {
                     ForEach(result.all, id: \.key) { hit in
                         Button("Open on \(model.sourceName(hit.sourceID))") { path.append(route(hit)) }
@@ -236,6 +239,7 @@ struct BrowseView: View {
                         NavigationLink(value: WorkRoute(key: WorkKey(sourceID: result.source.id, workID: work.id), summary: work)) {
                             WorkCard(work: work, format: work.format ?? result.source.manifest.defaultFormat)
                         }
+                        .accessibilityIdentifier("work.result")
                     }
                     if page.results.count > 8 || page.hasMore {
                         NavigationLink("More from \(result.source.manifest.name)", value: result.source)
@@ -364,6 +368,7 @@ struct SourceSearchView: View {
                         NavigationLink(value: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work)) {
                             WorkCard(work: work, format: work.format ?? source.manifest.defaultFormat)
                         }
+                        .accessibilityIdentifier("work.result")
                     }
                     if hasMore {
                         Button(loading ? "Loading..." : "Load more") { Task { await run(page: page + 1) } }
@@ -465,6 +470,11 @@ struct FilterChip: View {
     private var selected: [String] { values[filter.id] ?? [] }
 
     var body: some View {
+        control.accessibilityIdentifier("filter.chip")
+    }
+
+    @ViewBuilder
+    private var control: some View {
         switch filter.type {
         case .toggle:
             Button { values[filter.id] = selected.isEmpty ? ["true"] : [] } label: { chip(filter.label, on: !selected.isEmpty) }
