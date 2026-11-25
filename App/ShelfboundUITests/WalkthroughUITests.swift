@@ -76,6 +76,18 @@ final class WalkthroughUITests: XCTestCase {
             sleep(1)
         }
 
+        step("Browse with sources installed") {
+            app.tabBars.buttons["Browse"].tap()
+            popToRoot()
+            sleep(8) // Discover rows load from the sources
+        }
+
+        step("Browse scrolled") {
+            app.swipeUp()
+            sleep(2)
+            app.swipeDown()
+        }
+
         step("Search all sources") {
             app.tabBars.buttons["Browse"].tap()
             popToRoot()
@@ -114,14 +126,37 @@ final class WalkthroughUITests: XCTestCase {
     // MARK: Flows
 
     private func sourceFlow(name: String, matching: String, or other: String? = nil, query: String, prefix: String, network: Bool = true) {
-        step("\(name): source search") {
+        step("\(name): source page before searching") {
             app.tabBars.buttons["Browse"].tap()
             popToRoot()
             let row = app.buttons.matching(identifier: "browse.source").matching(sourceRow(matching, other)).firstMatch
             XCTAssertTrue(row.waitForExistence(timeout: 20), "\(name) not in installed sources")
             row.tap()
             XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 10))
-            sleep(3) // filters load from the source
+            sleep(6) // filters and browse lists load from the source
+        }
+
+        if network {
+            step("\(name): search results") {
+                let search = app.searchFields.firstMatch
+                search.tap()
+                search.typeText("\(query)\n")
+                if !firstResult().waitForExistence(timeout: 45) {
+                    // One retry, for a slow site: submit the same search again.
+                    search.tap()
+                    search.typeText("\n")
+                    XCTAssertTrue(firstResult().waitForExistence(timeout: 45), "No \(name) results for \(query)")
+                }
+                sleep(2)
+            }
+        } else {
+            // The chips show once a search has run, even one that failed.
+            step("\(name): search (site unreachable from CI, not checked)") {
+                let search = app.searchFields.firstMatch
+                search.tap()
+                search.typeText("\(query)\n")
+                sleep(8)
+            }
         }
 
         step("\(name): filter chip menu") {
@@ -131,11 +166,18 @@ final class WalkthroughUITests: XCTestCase {
             sleep(1)
         }
 
-        step("\(name): filter chip chosen") {
+        step("\(name): filter chip chosen, results reloading") {
             // A menu shows its options as buttons; pick the second if there is one, else close it.
             let options = app.collectionViews.buttons
             if options.count > 1 { options.element(boundBy: 1).tap() } else { app.tap() }
-            sleep(1)
+            // No wait: this screenshot should catch the old results dimmed while new ones load.
+        }
+
+        if network {
+            step("\(name): results after the filter change") {
+                XCTAssertTrue(firstResult().waitForExistence(timeout: 45), "No \(name) results after changing a filter")
+                sleep(2)
+            }
         }
 
         step("\(name): multi-select menu after one tap") {
@@ -151,46 +193,11 @@ final class WalkthroughUITests: XCTestCase {
         }
 
         step("\(name): multi-select menu closed") {
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)).tap()
-            sleep(1)
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap()
+            sleep(3)
         }
 
-        guard network else {
-            step("\(name): search (site unreachable from CI, not checked)") {
-                let search = app.searchFields.firstMatch
-                search.tap()
-                search.typeText("\(query)\n")
-                sleep(8)
-            }
-            return
-        }
-
-        step("\(name): search results") {
-            let search = app.searchFields.firstMatch
-            search.tap()
-            search.typeText("\(query)\n")
-            if !firstResult().waitForExistence(timeout: 45) {
-                // One retry, for a slow site: submit the same search again.
-                search.tap()
-                search.typeText("\n")
-                XCTAssertTrue(firstResult().waitForExistence(timeout: 45), "No \(name) results for \(query)")
-            }
-            sleep(2)
-        }
-
-        step("\(name): results while re-sorting") {
-            let chip = app.buttons.matching(identifier: "filter.chip").firstMatch
-            guard chip.exists else { return }
-            chip.tap()
-            let options = app.collectionViews.buttons
-            if options.waitForExistence(timeout: 3), options.count > 2 { options.element(boundBy: 2).tap() }
-            // No wait: this screenshot should catch the old results dimmed while new ones load.
-        }
-
-        step("\(name): results after re-sorting") {
-            XCTAssertTrue(firstResult().waitForExistence(timeout: 45), "No \(name) results after re-sorting")
-            sleep(2)
-        }
+        guard network else { return }
 
         step("\(name): series page") {
             firstResult().tap()
