@@ -486,6 +486,10 @@ struct SourceSearchView: View {
     private var reloading: Bool { loading && !results.isEmpty && loadingPage == 1 }
     /// The page being fetched, so loading the next page doesn't dim what's already shown.
     @State private var loadingPage = 1
+    /// The filters the results on screen were searched with, for fetching their next pages.
+    @State private var pagedValues: [String: [String]]?
+    /// Pages in a row that brought only works already shown.
+    @State private var repeatPages = 0
 
     var body: some View {
         List {
@@ -681,8 +685,10 @@ struct SourceSearchView: View {
     }
 
     private func run(page: Int) async {
-        let text = query.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty || activeFilters || searchedText != nil else { return }
+        // Later pages continue the search on screen, not whatever is typed in the field now.
+        let text = page == 1 ? query.trimmingCharacters(in: .whitespaces) : (searchedText ?? "")
+        let filters = page == 1 ? values : (pagedValues ?? values)
+        guard page > 1 || !text.isEmpty || activeFilters || searchedText != nil else { return }
         generation += 1
         let mine = generation
         if page == 1 { self.page = 1 }
@@ -690,7 +696,7 @@ struct SourceSearchView: View {
         loading = true
         defer { if mine == generation { loading = false } }
         do {
-            let result = try await model.runtime(for: source.id).search(query: text, page: page, filters: values)
+            let result = try await model.runtime(for: source.id).search(query: text, page: page, filters: filters)
             guard mine == generation else { return }
             // Append only works not already shown. Sites repeat works across pages, and a
             // repeated ID made the list drop rows and could crash switching layouts.
@@ -698,8 +704,12 @@ struct SourceSearchView: View {
             let fresh = result.results.filter { seen.insert($0.id).inserted }
             results = page == 1 ? fresh : results + fresh
             searchedText = text
+            pagedValues = filters
             self.page = page
-            hasMore = result.hasMore && !fresh.isEmpty
+            // Follow the site. A page of nothing but repeats doesn't end the list, but
+            // three in a row does, so a site that never says it's done can't loop forever.
+            repeatPages = fresh.isEmpty && page > 1 ? repeatPages + 1 : 0
+            hasMore = result.hasMore && repeatPages < 3
             error = nil
         } catch {
             guard mine == generation else { return }
