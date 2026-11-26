@@ -125,7 +125,19 @@ struct FilterField: View {
         case .range:
             RangeField(filter: filter, values: $values)
         case .tags:
-            TagField(sourceID: sourceID, filter: filter, values: $values)
+            if let options = filter.options, !options.isEmpty {
+                // A fixed list (a site's genres): tap them, the same as on the site, and
+                // they go to the site as its genre filter, not as typed search words.
+                VStack(alignment: .leading, spacing: 6) {
+                    GenreGrid(filter: filter, values: $values)
+                    if filter.excludable == true {
+                        Text("Tap once to include, twice to exclude, three times to clear.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                TagField(sourceID: sourceID, filter: filter, values: $values)
+            }
         }
     }
 
