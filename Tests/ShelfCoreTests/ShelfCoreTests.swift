@@ -1,4 +1,7 @@
 import XCTest
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import ShelfCore
 
 final class ShelfCoreTests: XCTestCase {
@@ -95,6 +98,39 @@ final class BrowserVerificationTests: XCTestCase {
         XCTAssertFalse(BrowserChallenge.isChallenge(status: 403, headers: ["server": "nginx"], body: "<title>Just a moment</title>"))
         XCTAssertFalse(BrowserChallenge.isChallenge(status: 404, headers: ["server": "cloudflare"], body: "Not found"))
         XCTAssertFalse(BrowserChallenge.isChallenge(status: 403, headers: ["server": "cloudflare"], body: "Forbidden"))
+        // Cloudflare puts this script on ordinary pages, including a site's own error pages.
+        XCTAssertFalse(BrowserChallenge.isChallenge(
+            status: 503, headers: ["server": "cloudflare"],
+            body: #"<title>Down for maintenance</title><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script>"#))
+    }
+
+    func testOwnCookieHeaderKeepsStoredCookies() {
+        XCTAssertEqual(
+            CookieHeader.merge("toonily-mature=1", stored: [("cf_clearance", "abc"), ("__cf_bm", "x")]),
+            "toonily-mature=1; cf_clearance=abc; __cf_bm=x")
+        // The request's own value wins over a stored one with the same name.
+        XCTAssertEqual(CookieHeader.merge("a=1; b=2", stored: [("b", "old"), ("c", "3")]), "a=1; b=2; c=3")
+        XCTAssertEqual(CookieHeader.merge("", stored: [("cf_clearance", "abc")]), "cf_clearance=abc")
+    }
+
+    func testRequestWithOwnCookieHeaderGetsStoredCookies() throws {
+        let storage = try XCTUnwrap(URLSessionConfiguration.ephemeral.httpCookieStorage)
+        let cookie = try XCTUnwrap(HTTPCookie(properties: [
+            .domain: ".example.com", .path: "/", .name: "cf_clearance", .value: "abc",
+            .expires: Date().addingTimeInterval(3600),
+        ]))
+        storage.setCookie(cookie)
+        var request = URLRequest(url: URL(string: "https://example.com/series/")!)
+        request.setValue("mature=1", forHTTPHeaderField: "Cookie")
+        XCTAssertTrue(request.includeStoredCookies(from: storage))
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Cookie"), "mature=1; cf_clearance=abc")
+        XCTAssertFalse(request.httpShouldHandleCookies)
+
+        // Without its own header, URLSession adds the stored cookies itself.
+        var plain = URLRequest(url: URL(string: "https://example.com/")!)
+        XCTAssertFalse(plain.includeStoredCookies(from: storage))
+        XCTAssertNil(plain.value(forHTTPHeaderField: "Cookie"))
+        XCTAssertTrue(plain.httpShouldHandleCookies)
     }
 
     func testClearanceAppliesToSubdomainsOfTheVerifiedDomain() {

@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// A site answered with a bot check (such as a Cloudflare challenge) that only a person
 /// can pass. The app opens the page in a browser sheet so the person can complete it
@@ -26,7 +29,10 @@ public enum BrowserChallenge {
         let server = headers["server"]?.lowercased() ?? ""
         guard server.contains("cloudflare") || headers["cf-ray"] != nil else { return false }
         let head = body.prefix(20_000).lowercased()
-        return head.contains("/cdn-cgi/challenge-platform/")
+        // Not "/cdn-cgi/challenge-platform/scripts/jsd/": Cloudflare adds that script to
+        // ordinary pages too, so an ordinary 403 or 503 from the site would ask the person
+        // to verify over and over.
+        return head.contains("/cdn-cgi/challenge-platform/h/")
             || head.contains("cf-chl-")
             || head.contains("<title>just a moment")
             || head.contains("cf_chl_opt")
@@ -106,5 +112,55 @@ public final class ClearanceStore: @unchecked Sendable {
     /// Call with the lock held.
     private func save() {
         defaults?.set(try? JSONEncoder().encode(entries), forKey: key)
+    }
+}
+
+/// A request that sets its own `Cookie` header (a source sending a site setting such as
+/// "show mature series") doesn't get the stored cookies added by URLSession, so a site's
+/// clearance cookie from the browser check was never sent and the check came back every
+/// time. This puts the stored cookies for the URL into the header itself.
+public enum CookieHeader {
+    /// `header` with `stored` added. A cookie named in `header` keeps the header's value.
+    public static func merge(_ header: String, stored: [(name: String, value: String)]) -> String {
+        var parts: [String] = []
+        var names = Set<String>()
+        for part in header.split(separator: ";") {
+            let trimmed = part.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+            parts.append(trimmed)
+            names.insert(String(trimmed.prefix { $0 != "=" }))
+        }
+        for cookie in stored where !names.contains(cookie.name) {
+            names.insert(cookie.name)
+            parts.append("\(cookie.name)=\(cookie.value)")
+        }
+        return parts.joined(separator: "; ")
+    }
+}
+
+extension URLRequest {
+    /// When the request sets its own `Cookie` header, adds `storage`'s cookies for the URL
+    /// to it and turns off URLSession's own cookie handling, which would otherwise leave
+    /// them out. Returns true when it did, so the caller can keep the response's cookies.
+    @discardableResult
+    public mutating func includeStoredCookies(from storage: HTTPCookieStorage) -> Bool {
+        guard let url, let header = value(forHTTPHeaderField: "Cookie") else { return false }
+        let stored = (storage.cookies(for: url) ?? []).map { (name: $0.name, value: $0.value) }
+        setValue(CookieHeader.merge(header, stored: stored), forHTTPHeaderField: "Cookie")
+        httpShouldHandleCookies = false
+        return true
+    }
+}
+
+extension HTTPCookieStorage {
+    /// Keeps the cookies a response set, for a request sent with cookie handling off.
+    public func keepCookies(from response: URLResponse?) {
+        guard let http = response as? HTTPURLResponse, let url = http.url else { return }
+        var fields: [String: String] = [:]
+        for (key, value) in http.allHeaderFields {
+            fields[String(describing: key)] = String(describing: value)
+        }
+        let cookies = HTTPCookie.cookies(withResponseHeaderFields: fields, for: url)
+        if !cookies.isEmpty { setCookies(cookies, for: url, mainDocumentURL: nil) }
     }
 }

@@ -13,7 +13,7 @@ export function isChallenge(status, headers, body) {
   if (![403, 503, 429].includes(status)) return false;
   if (!(headers.server || "").toLowerCase().includes("cloudflare") && !headers["cf-ray"]) return false;
   const head = String(body).slice(0, 20000).toLowerCase();
-  return ["/cdn-cgi/challenge-platform/", "cf-chl-", "<title>just a moment", "cf_chl_opt", "cf-turnstile"].some((s) => head.includes(s));
+  return ["/cdn-cgi/challenge-platform/h/", "cf-chl-", "<title>just a moment", "cf_chl_opt", "cf-turnstile"].some((s) => head.includes(s));
 }
 
 export class BrowserVerificationNeeded extends Error {

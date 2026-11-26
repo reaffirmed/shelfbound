@@ -33,7 +33,7 @@ struct UnhandledLink: Error, LocalizedError {
 @Observable
 final class AppModel {
     static let shared = AppModel()
-    nonisolated static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.8"
+    nonisolated static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.9"
 
     private(set) var repos: [SavedRepo] = []
     private(set) var installed: [InstalledSource] = []
@@ -103,7 +103,9 @@ final class AppModel {
         let monitor = NetworkMonitor()
         let box = ResolverBox()
         let loadedSettings = Self.load(AppSettings.self, Keys.settings, from: .standard) ?? AppSettings()
-        network = URLSessionNetwork(clearances: .shared, accounts: accountJars)
+        network = URLSessionNetwork(
+            clearances: .shared, accounts: accountJars,
+            browserFetch: { try await BrowserFetcher.hostResponse(for: $0) })
         self.transfer = transfer
         self.networkMonitor = monitor
         self.resolverBox = box

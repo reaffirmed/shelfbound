@@ -124,13 +124,17 @@ struct VerificationWebView: UIViewRepresentable {
     let controller: VerificationController
     let onCleared: () -> Void
 
+    /// Added to the web view's User-Agent. The clearance cookie is tied to the whole
+    /// User-Agent, so every web view that uses it must add the same.
+    static let applicationName = "Version/17.0 Mobile/15E148 Safari/604.1"
+
     func makeCoordinator() -> Coordinator { Coordinator(host: host, onCleared: onCleared) }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         // A normal browser, so the site's own check can run. Cookies persist like Safari's.
         config.websiteDataStore = .default()
-        config.applicationNameForUserAgent = "Version/17.0 Mobile/15E148 Safari/604.1"
+        config.applicationNameForUserAgent = Self.applicationName
         let view = WKWebView(frame: .zero, configuration: config)
         view.navigationDelegate = context.coordinator
         controller.webView = view
@@ -176,9 +180,15 @@ struct VerificationWebView: UIViewRepresentable {
             guard !done else { return }
             let cookies = await view.configuration.websiteDataStore.httpCookieStore.allCookies()
             let cleared = cookies.contains { $0.name == "cf_clearance" && VerificationController.cookie($0, appliesTo: host) }
-            // Wait until the check page has moved on to the real page.
+            guard cleared, !view.isLoading else { return }
+            // Wait until the check page has moved on to the real page. A clearance cookie
+            // left from an earlier check can already be there while a new check is showing,
+            // and the check page's title depends on the phone's language, so look for the
+            // check itself.
+            let script = "!!(window._cf_chl_opt || document.querySelector('script[src*=\"/cdn-cgi/challenge-platform/h/\"], #challenge-form, #challenge-stage'))"
+            let onCheckPage = (try? await view.evaluateJavaScript(script)) as? Bool ?? true
             let title = (view.title ?? "").lowercased()
-            guard cleared, !view.isLoading, !title.contains("just a moment"), !title.contains("attention required") else { return }
+            guard !onCheckPage, !title.contains("just a moment"), !title.contains("attention required") else { return }
             done = true
             stop()
             onCleared()
