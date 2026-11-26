@@ -512,8 +512,42 @@ struct SearchLayoutMenu: View {
     }
 }
 
+/// One cover with the title under it, for the cover grids. Its height depends only on
+/// the column width (a 2:3 cover and two title lines kept even for a short title), so
+/// every tile in a grid is the same size and rows never resize as covers load.
+@MainActor
+struct CoverTile: View {
+    let item: CoverGrid.Item
+    let open: (WorkRoute) -> Void
+
+    var body: some View {
+        Button { open(item.route) } label: {
+            let work = item.route.summary
+            VStack(alignment: .leading, spacing: 3) {
+                CoverView(
+                    title: work.title, author: work.authors.first ?? "", format: item.format, url: work.coverURL,
+                    words: work.wordCount, chapters: work.chapterCount)
+                TileText(title: work.title, caption: item.caption ?? work.authors.first ?? work.fandoms?.first ?? item.format.label)
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("work.result")
+        .contextMenu {
+            if !item.alternatives.isEmpty {
+                ForEach(Array(item.alternatives.enumerated()), id: \.offset) { _, alternative in
+                    Button("Open on \(alternative.0)") { open(alternative.1) }
+                }
+            }
+        }
+    }
+}
+
 /// Search results as big covers with the title under them, the way Discover shows its
 /// rows. Sits in one list row so it works inside the same List as the other results.
+/// For a short, fixed set of results only: a list that loads more pages uses
+/// `PagedCoverGrid`, since one list row that keeps growing makes the list jump.
 @MainActor
 struct CoverGrid: View {
     struct Item: Identifiable {
@@ -532,35 +566,90 @@ struct CoverGrid: View {
     let open: (WorkRoute) -> Void
 
     /// Three across on a phone, more on wider screens, each cover as wide as its column.
-    private let columns = [GridItem(.adaptive(minimum: 96, maximum: 160), spacing: 12, alignment: .top)]
+    static let columns = [GridItem(.adaptive(minimum: 96, maximum: 160), spacing: 12, alignment: .top)]
 
     var body: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
-            ForEach(items) { item in
-                Button { open(item.route) } label: {
-                    let work = item.route.summary
-                    VStack(alignment: .leading, spacing: 3) {
-                        CoverView(
-                            title: work.title, author: work.authors.first ?? "", format: item.format, url: work.coverURL,
-                            words: work.wordCount, chapters: work.chapterCount)
-                        TileText(title: work.title, caption: item.caption ?? work.authors.first ?? work.fandoms?.first ?? item.format.label)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("work.result")
-                .contextMenu {
-                    if !item.alternatives.isEmpty {
-                        ForEach(Array(item.alternatives.enumerated()), id: \.offset) { _, alternative in
-                            Button("Open on \(alternative.0)") { open(alternative.1) }
-                        }
-                    }
-                }
-            }
+        LazyVGrid(columns: Self.columns, alignment: .leading, spacing: 16) {
+            ForEach(items) { CoverTile(item: $0, open: open) }
         }
         .padding(.vertical, 8)
         .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
         .listRowBackground(Color.clear)
+    }
+}
+
+/// A grid of covers that loads more as you scroll, in its own scroll view rather than a
+/// List row. Each tile is laid out lazily and keeps its size, so a new page only adds
+/// rows below and nothing above it moves. The next page is asked for while about two
+/// screens of covers are still left, so it's usually there before you reach the end.
+@MainActor
+struct PagedCoverGrid<Header: View>: View {
+    let items: [CoverGrid.Item]
+    /// The last page loaded, passed on to the footer.
+    let page: Int
+    let hasMore: Bool
+    /// The last page failed, so the end shows Try again instead of a spinner.
+    let failed: Bool
+    let loadMore: (_ retry: Bool) -> Void
+    let open: (WorkRoute) -> Void
+    @ViewBuilder var header: () -> Header
+
+    /// How many tiles from the end the next page is fetched.
+    static var prefetchDistance: Int { 24 }
+
+    var body: some View {
+        // The trigger is a set of IDs worked out once per update, not an index lookup per tile.
+        let trigger = Set(items.suffix(Self.prefetchDistance).map(\.id))
+        ScrollView {
+            header()
+            LazyVGrid(columns: CoverGrid.columns, alignment: .leading, spacing: 16) {
+                ForEach(items) { item in
+                    CoverTile(item: item, open: open)
+                        .onAppear { if hasMore, trigger.contains(item.id) { loadMore(false) } }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            PageFooter(hasMore: hasMore, failed: failed, page: page, loadMore: loadMore)
+                .padding(.horizontal, 16)
+        }
+    }
+}
+
+extension PagedCoverGrid where Header == EmptyView {
+    init(items: [CoverGrid.Item], page: Int, hasMore: Bool, failed: Bool,
+         loadMore: @escaping (_ retry: Bool) -> Void, open: @escaping (WorkRoute) -> Void) {
+        self.init(items: items, page: page, hasMore: hasMore, failed: failed, loadMore: loadMore, open: open) { EmptyView() }
+    }
+}
+
+/// The end of a list that loads more: a spinner while there's more to come, or Try again
+/// after a failed page. It keeps one fixed height, so swapping between the two never
+/// nudges the rows above it. Reaching it also asks for the next page, as a fallback for
+/// when the prefetch didn't fire (a short page, or a failed one).
+struct PageFooter: View {
+    let hasMore: Bool
+    let failed: Bool
+    /// The page shown last. The footer asks again whenever it changes while still on
+    /// screen, as after a page that brought only works already shown.
+    var page = 0
+    let loadMore: (_ retry: Bool) -> Void
+
+    var body: some View {
+        if hasMore {
+            ZStack {
+                if failed {
+                    Button("Try again") { loadMore(true) }
+                } else {
+                    ProgressView()
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 56)
+            // Load in a Task of its own (inside loadMore), since this one is cancelled as
+            // soon as the footer scrolls away.
+            .task(id: page) { if !failed { loadMore(false) } }
+        } else {
+            Color.clear.frame(height: 24)
+        }
     }
 }
