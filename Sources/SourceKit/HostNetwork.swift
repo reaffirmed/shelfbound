@@ -199,11 +199,17 @@ public actor URLSessionNetwork: HostNetwork {
             }
         }
         let session = accountSession ?? self.session
+        // A source that sends its own Cookie header still needs the stored ones, above all
+        // the browser check's clearance cookie.
+        let cookieStore = accountSession.flatMap { accounts?.storage(for: $0) }
+            ?? session.configuration.httpCookieStorage ?? .shared
+        let manualCookies = request.includeStoredCookies(from: cookieStore)
         #if canImport(FoundationNetworking)
         let (data, response) = try await session.data(for: request)
         #else
         let (data, response) = try await session.data(for: request, delegate: RedirectGuard(options: options))
         #endif
+        if manualCookies { cookieStore.keepCookies(from: response) }
         if let accountSession { accounts?.noteResponse(for: sourceID, session: accountSession) }
         let http = response as? HTTPURLResponse
         var headers: [String: String] = [:]

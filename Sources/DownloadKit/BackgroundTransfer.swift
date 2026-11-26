@@ -59,6 +59,7 @@ public final class BackgroundTransfer: NSObject, FileTransfer, URLSessionDownloa
         } else {
             var urlRequest = URLRequest(url: request.url)
             for (key, value) in request.headers { urlRequest.setValue(value, forHTTPHeaderField: key) }
+            urlRequest.includeStoredCookies(from: session.configuration.httpCookieStorage ?? .shared)
             if let browserAgent = ClearanceStore.shared.userAgent(for: request.url) {
                 // The host was verified in the browser; its clearance cookie needs the same identity.
                 urlRequest.setValue(browserAgent, forHTTPHeaderField: "User-Agent")

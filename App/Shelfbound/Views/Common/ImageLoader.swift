@@ -108,6 +108,7 @@ final class ImageLoader: @unchecked Sendable {
             defer { release(host) }
             var request = URLRequest(url: page.url)
             for (field, value) in page.headers ?? [:] { request.setValue(value, forHTTPHeaderField: field) }
+            request.includeStoredCookies(from: session.configuration.httpCookieStorage ?? .shared)
             if let browserAgent = ClearanceStore.shared.userAgent(for: page.url) {
                 request.setValue(browserAgent, forHTTPHeaderField: "User-Agent")
             } else if request.value(forHTTPHeaderField: "User-Agent") == nil {

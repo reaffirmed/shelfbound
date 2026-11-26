@@ -176,9 +176,15 @@ struct VerificationWebView: UIViewRepresentable {
             guard !done else { return }
             let cookies = await view.configuration.websiteDataStore.httpCookieStore.allCookies()
             let cleared = cookies.contains { $0.name == "cf_clearance" && VerificationController.cookie($0, appliesTo: host) }
-            // Wait until the check page has moved on to the real page.
+            guard cleared, !view.isLoading else { return }
+            // Wait until the check page has moved on to the real page. A clearance cookie
+            // left from an earlier check can already be there while a new check is showing,
+            // and the check page's title depends on the phone's language, so look for the
+            // check itself.
+            let script = "!!(window._cf_chl_opt || document.querySelector('script[src*=\"/cdn-cgi/challenge-platform/h/\"], #challenge-form, #challenge-stage'))"
+            let onCheckPage = (try? await view.evaluateJavaScript(script)) as? Bool ?? true
             let title = (view.title ?? "").lowercased()
-            guard cleared, !view.isLoading, !title.contains("just a moment"), !title.contains("attention required") else { return }
+            guard !onCheckPage, !title.contains("just a moment"), !title.contains("attention required") else { return }
             done = true
             stop()
             onCleared()
