@@ -33,7 +33,7 @@ struct UnhandledLink: Error, LocalizedError {
 @Observable
 final class AppModel {
     static let shared = AppModel()
-    nonisolated static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.5"
+    nonisolated static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.6"
 
     private(set) var repos: [SavedRepo] = []
     private(set) var installed: [InstalledSource] = []
@@ -64,7 +64,9 @@ final class AppModel {
     /// Sites the person signed in to, by source ID. The cookies are in the Keychain.
     private(set) var accounts: [String: SavedAccount] = [:]
 
-    @ObservationIgnored let network = URLSessionNetwork(clearances: .shared)
+    /// Signed-in sources' cookies. Each source's go only with its own requests.
+    @ObservationIgnored let accountJars = AccountCookieJars()
+    @ObservationIgnored let network: URLSessionNetwork
     @ObservationIgnored let networkMonitor: NetworkMonitor
     @ObservationIgnored let transfer: BackgroundTransfer
     @ObservationIgnored let downloadManager: DownloadManager
@@ -101,6 +103,7 @@ final class AppModel {
         let monitor = NetworkMonitor()
         let box = ResolverBox()
         let loadedSettings = Self.load(AppSettings.self, Keys.settings, from: .standard) ?? AppSettings()
+        network = URLSessionNetwork(clearances: .shared, accounts: accountJars)
         self.transfer = transfer
         self.networkMonitor = monitor
         self.resolverBox = box
@@ -114,9 +117,20 @@ final class AppModel {
         library = libraryFile?.load() ?? LibraryState()
         relinkLocalCovers()
         accounts = Self.load([String: SavedAccount].self, Keys.accounts, from: .standard) ?? [:]
-        // Put signed-in sites' cookies back, in case the cookie store lost them.
+        // Each signed-in source gets its own cookie jar, filled from the Keychain. Apps
+        // before 0.5.6 put sign-in cookies in the shared store, where every source, reader
+        // mode and image request could send them, so take them out of there.
         for sourceID in accounts.keys {
-            for cookie in AccountKeychain.load(for: sourceID) { HTTPCookieStorage.shared.setCookie(cookie) }
+            let saved = AccountKeychain.load(for: sourceID)
+            accountJars.set(saved, for: sourceID)
+            Self.removeSharedCookies(named: Set(saved.map(\.name)), like: saved)
+        }
+        accountJars.onChange { sourceID, cookies in
+            // The site refreshed its session cookie: keep the saved copy current.
+            Task { @MainActor in
+                guard AppModel.shared.accounts[sourceID] != nil, !cookies.isEmpty else { return }
+                AccountKeychain.save(cookies, for: sourceID)
+            }
         }
         resolverBox.model = self
         ImageLoader.shared.screenScale = UIScreen.main.scale
@@ -261,16 +275,24 @@ final class AppModel {
 
     func isSignedIn(_ sourceID: String) -> Bool { accounts[sourceID] != nil }
 
+    var signedInSourceIDs: [String] { Array(accounts.keys) }
+
     /// Called with the cookies from the sign-in web view. Asks the source who is signed in,
     /// and keeps the cookies in the Keychain if somebody is. Returns the account, or nil
     /// when the site doesn't show anyone signed in yet.
     func finishSignIn(sourceID: String, cookies: [HTTPCookie]) async throws -> SourceAccount? {
         guard let manifest = manifest(for: sourceID) else { throw SourceError.unavailable }
-        let siteCookies = AccountKeychain.cookies(cookies, matching: manifest.domains)
-        for cookie in siteCookies { HTTPCookieStorage.shared.setCookie(cookie) }
+        // The site's own cookies only, minus a Cloudflare pass, which the shared store keeps.
+        let siteCookies = AccountKeychain.cookies(cookies, matching: manifest.domains).filter { $0.name != "cf_clearance" }
+        let hadAccount = accounts[sourceID] != nil
+        accountJars.set(siteCookies, for: sourceID)
         restartRuntime(sourceID)
-        guard let account = try await runtime(for: sourceID).getAccount() else { return nil }
-        AccountKeychain.save(siteCookies, for: sourceID)
+        guard let account = try await runtime(for: sourceID).getAccount() else {
+            // Nobody signed in: go back to what was there before.
+            accountJars.set(hadAccount ? AccountKeychain.load(for: sourceID) : [], for: sourceID)
+            return nil
+        }
+        AccountKeychain.save(accountJars.cookies(for: sourceID), for: sourceID)
         // Signing back in to the same account brings back its sync choices.
         var signedOut = Self.load([String: SavedAccount].self, Keys.signedOutAccounts, from: defaults) ?? [:]
         let previous = accounts[sourceID] ?? signedOut[sourceID].flatMap { $0.username == account.username ? $0 : nil }
@@ -295,16 +317,23 @@ final class AppModel {
 
     /// Forgets the session here. Nothing on the site changes.
     func signOut(sourceID: String) {
-        if let manifest = manifest(for: sourceID) {
-            let storage = HTTPCookieStorage.shared
-            for cookie in AccountKeychain.cookies(storage.cookies ?? [], matching: manifest.domains) {
-                storage.deleteCookie(cookie)
-            }
-        }
+        let saved = AccountKeychain.load(for: sourceID) + accountJars.cookies(for: sourceID)
+        Self.removeSharedCookies(named: Set(saved.map(\.name)), like: saved)
         forgetAccount(sourceID)
     }
 
+    /// Deletes cookies from the shared store that have the same name and site as a
+    /// sign-in cookie, left there by apps before 0.5.6.
+    private static func removeSharedCookies(named names: Set<String>, like cookies: [HTTPCookie]) {
+        let storage = HTTPCookieStorage.shared
+        let domains = Set(cookies.map(\.domain))
+        for cookie in storage.cookies ?? [] where names.contains(cookie.name) && domains.contains(cookie.domain) {
+            storage.deleteCookie(cookie)
+        }
+    }
+
     private func forgetAccount(_ sourceID: String) {
+        accountJars.set([], for: sourceID)
         AccountKeychain.delete(for: sourceID)
         // Keep which lists were synced, so signing in again doesn't mean setting it all up again.
         if let account = accounts[sourceID] {

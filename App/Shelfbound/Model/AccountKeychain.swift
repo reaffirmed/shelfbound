@@ -14,8 +14,8 @@ struct SavedAccount: Codable, Hashable {
 }
 
 /// Keeps a signed-in site's cookies in the Keychain, one item per source, so the session
-/// survives app restarts without a password ever being stored. At launch they're copied
-/// back into the shared cookie store that every request uses.
+/// survives app restarts without a password ever being stored. At launch they go into
+/// that source's own cookie jar (`AccountCookieJars`), never the shared cookie store.
 enum AccountKeychain {
     private static let service = "app.shelfbound.accounts"
 

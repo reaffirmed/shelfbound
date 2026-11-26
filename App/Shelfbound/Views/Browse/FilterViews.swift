@@ -75,7 +75,7 @@ struct FilterSheet: View {
             case .text:
                 let text = (values[filter.id]?.first ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 out[filter.id] = text.isEmpty ? [] : [text]
-            case .range:
+            case .range, .date:
                 let pair = values[filter.id] ?? []
                 let min = pair.first ?? "", max = pair.count > 1 ? pair[1] : ""
                 out[filter.id] = min.isEmpty && max.isEmpty ? [] : [min, max]
@@ -124,6 +124,8 @@ struct FilterField: View {
             .textInputAutocapitalization(.never)
         case .range:
             RangeField(filter: filter, values: $values)
+        case .date:
+            DateRangeField(filter: filter, values: $values)
         case .tags:
             if let options = filter.options, !options.isEmpty {
                 // A fixed list (a site's genres): tap them, the same as on the site, and
@@ -209,6 +211,79 @@ private struct RangeField: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("filter.range.\(filter.id)")
+    }
+}
+
+/// From and to dates, each one optional: switch one on to pick it.
+@MainActor
+private struct DateRangeField: View {
+    let filter: SearchFilter
+    @Binding var values: [String: [String]]
+
+    private static let format: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    private func stored(_ index: Int) -> String {
+        let pair = values[filter.id] ?? []
+        return index < pair.count ? pair[index] : ""
+    }
+
+    private func store(_ text: String, at index: Int) {
+        var pair = values[filter.id] ?? []
+        while pair.count < 2 { pair.append("") }
+        pair[index] = text
+        values[filter.id] = pair.allSatisfy(\.isEmpty) ? [] : pair
+    }
+
+    private func isOn(_ index: Int) -> Binding<Bool> {
+        Binding(
+            get: { !stored(index).isEmpty },
+            set: { on in
+                if on {
+                    // From starts a month back, to starts today.
+                    let start = index == 0 ? Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date() : Date()
+                    store(Self.format.string(from: start), at: index)
+                } else {
+                    store("", at: index)
+                }
+            })
+    }
+
+    private func day(_ index: Int) -> Binding<Date> {
+        Binding(
+            get: { Self.format.date(from: stored(index)) ?? Date() },
+            set: { store(Self.format.string(from: $0), at: index) })
+    }
+
+    var body: some View {
+        Group {
+            Toggle(isOn: isOn(0)) {
+                Text(filter.label + " from")
+            }
+            if !stored(0).isEmpty {
+                DatePicker("From", selection: day(0), in: ...Date(), displayedComponents: .date)
+            }
+            Toggle(isOn: isOn(1)) {
+                Text(filter.label + " until")
+            }
+            if !stored(1).isEmpty {
+                DatePicker("Until", selection: day(1), in: ...Date(), displayedComponents: .date)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("filter.date.\(filter.id)")
+    }
+
+    /// "12 Jan 2024", for chips.
+    static func display(_ text: String) -> String {
+        guard let date = format.date(from: text) else { return text }
+        return date.formatted(.dateTime.day().month(.abbreviated).year())
     }
 }
 
@@ -350,6 +425,11 @@ struct FilterSummaryChip: View {
         case .range:
             let min = current.first ?? "", max = current.count > 1 ? current[1] : ""
             let range = min.isEmpty ? "up to \(max)" : max.isEmpty ? "\(min)+" : "\(min)–\(max)"
+            return "\(filter.label): \(range)"
+        case .date:
+            let from = (current.first ?? "").isEmpty ? "" : DateRangeField.display(current[0])
+            let to = current.count > 1 && !current[1].isEmpty ? DateRangeField.display(current[1]) : ""
+            let range = from.isEmpty ? "until \(to)" : to.isEmpty ? "since \(from)" : "\(from)–\(to)"
             return "\(filter.label): \(range)"
         default:
             let names = current + (values[filter.excludeKey] ?? []).map { "−\($0)" }

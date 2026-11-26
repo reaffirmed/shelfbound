@@ -52,6 +52,98 @@ extension HostNetwork {
     }
 }
 
+/// Signed-in sources' cookies, one private jar per source, so a source's sign-in cookies
+/// go only with that source's own requests: never with another source's (even one that
+/// declares the same site), and never with reader mode, images or downloads, which use
+/// the shared cookie store. Safe to use from any thread.
+public final class AccountCookieJars: @unchecked Sendable {
+    private let lock = NSLock()
+    private var sessions: [String: URLSession] = [:]
+    /// Each jar's cookie store, kept here rather than read back from the session.
+    private var stores: [ObjectIdentifier: HTTPCookieStorage] = [:]
+    private var fingerprints: [String: Set<String>] = [:]
+    private var changed: (@Sendable (String, [HTTPCookie]) -> Void)?
+
+    public init() {}
+
+    /// Gives `sourceID` its own jar holding `cookies`. An empty list removes the jar, so
+    /// the source goes back to the shared cookie store.
+    public func set(_ cookies: [HTTPCookie], for sourceID: String) {
+        let made = cookies.isEmpty ? nil : Self.makeSession(with: cookies)
+        lock.lock()
+        let old = sessions[sourceID]
+        if let old { stores[ObjectIdentifier(old)] = nil }
+        sessions[sourceID] = made?.session
+        if let made { stores[ObjectIdentifier(made.session)] = made.storage }
+        fingerprints[sourceID] = made.map { Self.fingerprint(Self.signInCookies($0.storage)) }
+        lock.unlock()
+        old?.finishTasksAndInvalidate()
+    }
+
+    /// The sign-in cookies in a source's jar now, including any the site has refreshed
+    /// since. Empty when the source has no jar.
+    public func cookies(for sourceID: String) -> [HTTPCookie] {
+        session(for: sourceID).flatMap(storage(for:)).map(Self.signInCookies) ?? []
+    }
+
+    /// The cookie store a jar's session uses.
+    func storage(for session: URLSession) -> HTTPCookieStorage? {
+        lock.lock()
+        defer { lock.unlock() }
+        return stores[ObjectIdentifier(session)]
+    }
+
+    public func hasJar(for sourceID: String) -> Bool { session(for: sourceID) != nil }
+
+    /// Called with a source's cookies whenever a response changes them, so the app can
+    /// keep its saved copy current.
+    public func onChange(_ handler: @escaping @Sendable (String, [HTTPCookie]) -> Void) {
+        lock.lock()
+        changed = handler
+        lock.unlock()
+    }
+
+    func session(for sourceID: String) -> URLSession? {
+        lock.lock()
+        defer { lock.unlock() }
+        return sessions[sourceID]
+    }
+
+    /// After a request through `session`: tells the app if the site changed the cookies.
+    func noteResponse(for sourceID: String, session: URLSession) {
+        guard let storage = storage(for: session) else { return }
+        let now = Self.signInCookies(storage)
+        let current = Self.fingerprint(now)
+        lock.lock()
+        guard sessions[sourceID] === session, fingerprints[sourceID] != current else {
+            lock.unlock()
+            return
+        }
+        fingerprints[sourceID] = current
+        let handler = changed
+        lock.unlock()
+        handler?(sourceID, now)
+    }
+
+    private static func makeSession(with cookies: [HTTPCookie]) -> (session: URLSession, storage: HTTPCookieStorage)? {
+        let configuration = URLSessionConfiguration.ephemeral
+        // An ephemeral configuration has its own in-memory store. Never use the shared one.
+        guard let storage = configuration.httpCookieStorage, storage !== HTTPCookieStorage.shared else { return nil }
+        storage.cookieAcceptPolicy = .always
+        for cookie in cookies { storage.setCookie(cookie) }
+        return (URLSession(configuration: configuration), storage)
+    }
+
+    /// The jar's cookies, minus a Cloudflare pass copied in from the shared store.
+    private static func signInCookies(_ storage: HTTPCookieStorage) -> [HTTPCookie] {
+        (storage.cookies ?? []).filter { $0.name != "cf_clearance" }
+    }
+
+    private static func fingerprint(_ cookies: [HTTPCookie]) -> Set<String> {
+        Set(cookies.map { "\($0.domain)|\($0.path)|\($0.name)=\($0.value)" })
+    }
+}
+
 /// URLSession-backed network with a minimum gap between requests per source,
 /// so community sources are gentle with the sites they read. A 429 or 503 with
 /// `Retry-After` pushes that source's next request back.
@@ -68,11 +160,16 @@ public actor URLSessionNetwork: HostNetwork {
     public static let userAgent = "Shelfbound/0.2 (iOS reader)"
 
     private let clearances: ClearanceStore?
+    private let accounts: AccountCookieJars?
 
-    public init(session: URLSession = .shared, minimumInterval: Duration = .milliseconds(1000), clearances: ClearanceStore? = nil) {
+    public init(
+        session: URLSession = .shared, minimumInterval: Duration = .milliseconds(1000),
+        clearances: ClearanceStore? = nil, accounts: AccountCookieJars? = nil
+    ) {
         self.session = session
         self.defaultInterval = minimumInterval
         self.clearances = clearances
+        self.accounts = accounts
     }
 
     /// Uses a longer gap for one source, from its manifest's `rateLimit`. Never shorter than the default.
@@ -93,11 +190,21 @@ public actor URLSessionNetwork: HostNetwork {
         } else if request.value(forHTTPHeaderField: "User-Agent") == nil {
             request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         }
+        // A signed-in source uses its own jar; everything else uses the shared store.
+        let accountSession = accounts?.session(for: sourceID)
+        if let accountSession, let url = request.url, let jar = accounts?.storage(for: accountSession) {
+            // A Cloudflare pass the person got in the browser still applies to this site.
+            for cookie in HTTPCookieStorage.shared.cookies(for: url) ?? [] where cookie.name == "cf_clearance" {
+                jar.setCookie(cookie)
+            }
+        }
+        let session = accountSession ?? self.session
         #if canImport(FoundationNetworking)
         let (data, response) = try await session.data(for: request)
         #else
         let (data, response) = try await session.data(for: request, delegate: RedirectGuard(options: options))
         #endif
+        if let accountSession { accounts?.noteResponse(for: sourceID, session: accountSession) }
         let http = response as? HTTPURLResponse
         var headers: [String: String] = [:]
         for (key, value) in http?.allHeaderFields ?? [:] {

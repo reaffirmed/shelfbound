@@ -477,7 +477,7 @@ struct SourceSearchView: View {
         filters.filter { filter in
             switch filter.type {
             case .select, .multi, .toggle: true
-            case .text, .range, .tags: filter.isActive(in: values)
+            case .text, .range, .tags, .date: filter.isActive(in: values)
             }
         }
     }
@@ -639,7 +639,7 @@ struct SourceSearchView: View {
                 ForEach(chipFilters) { filter in
                     switch filter.type {
                     case .select, .multi, .toggle: FilterChip(filter: filter, values: $values)
-                    case .text, .range, .tags: FilterSummaryChip(filter: filter, values: values) { showingFilters = true }
+                    case .text, .range, .tags, .date: FilterSummaryChip(filter: filter, values: values) { showingFilters = true }
                     }
                 }
             }
@@ -778,7 +778,7 @@ struct FilterChip: View {
                 chip(selected.isEmpty ? filter.label : "\(filter.label) · \(selected.count)", on: !selected.isEmpty)
             }
             .animation(nil, value: selected)
-        case .text, .range, .tags:
+        case .text, .range, .tags, .date:
             EmptyView()
         }
     }

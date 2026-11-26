@@ -478,14 +478,15 @@ public struct SourceListing: Codable, Sendable, Hashable, Identifiable {
 /// - `toggle`: `["true"]`, or nothing.
 /// - `text`: the text typed, as one entry.
 /// - `range`: `[min, max]`, either of which may be "" for no limit.
+/// - `date`: `[from, to]` as `YYYY-MM-DD`, either of which may be "" for no limit.
 /// - `tags`: the names to include. When `excludable`, the names to leave out go
 ///   under `"<id>.exclude"`. Names come from `options`, from the source's optional
 ///   `suggest(filterID, text)` when `suggests` is set, or from what the person types.
 ///
-/// Apps before 0.4 only know `select`, `multi` and `toggle`, so sources check
-/// `host.filterTypes` before offering the others.
+/// Apps before 0.4 only know `select`, `multi` and `toggle`, and apps before 0.5.6 don't
+/// know `date`, so sources check `host.filterTypes` before offering the others.
 public struct SearchFilter: Codable, Sendable, Hashable, Identifiable {
-    public enum Kind: String, Codable, Sendable, CaseIterable { case select, multi, toggle, text, range, tags }
+    public enum Kind: String, Codable, Sendable, CaseIterable { case select, multi, toggle, text, range, tags, date }
 
     public var id: String
     public var label: String
@@ -493,7 +494,8 @@ public struct SearchFilter: Codable, Sendable, Hashable, Identifiable {
     public var options: [Option]?
     /// Option IDs selected when the user hasn't picked anything.
     public var defaultValue: [String]?
-    /// Grey hint text in a `text` or `tags` field, or the unit of a `range` ("words").
+    /// Grey hint text in a `text` or `tags` field, the unit of a `range` ("words"), or for a
+    /// `date`, what the dates are ("updated").
     public var placeholder: String?
     /// `tags` only: whether names can be left out as well as included.
     public var excludable: Bool?
@@ -561,7 +563,7 @@ public enum TagSearch {
             case .select: return !exclude && option(for: tag, in: filter) != nil
             case .multi: return !exclude && option(for: tag, in: filter) != nil
             case .text: return !exclude
-            case .toggle, .range: return false
+            case .toggle, .range, .date: return false
             }
         }
     }
@@ -581,7 +583,7 @@ public enum TagSearch {
             values[filter.id] = [option.id]
         case .text:
             values[filter.id] = [tag]
-        case .toggle, .range:
+        case .toggle, .range, .date:
             return nil
         }
         return values

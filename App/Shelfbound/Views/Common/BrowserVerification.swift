@@ -95,7 +95,10 @@ final class VerificationController {
     func keepClearance(for host: String) async {
         guard let webView else { return }
         let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
-        for cookie in cookies where Self.cookie(cookie, appliesTo: host) {
+        // Not a site's sign-in cookies: those stay in the signed-in source's own jar.
+        let model = AppModel.shared
+        let signedIn = Set(model.signedInSourceIDs.flatMap { model.accountJars.cookies(for: $0) }.map { "\($0.domain)|\($0.name)" })
+        for cookie in cookies where Self.cookie(cookie, appliesTo: host) && !signedIn.contains("\(cookie.domain)|\(cookie.name)") {
             HTTPCookieStorage.shared.setCookie(cookie)
         }
         let agent = (try? await webView.evaluateJavaScript("navigator.userAgent")) as? String
