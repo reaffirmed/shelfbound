@@ -8,6 +8,9 @@ struct SavedAccount: Codable, Hashable {
     var signedInAt: Date
     /// Account lists (by ID) whose new works join the library on each update check.
     var syncedLists: [String] = []
+    /// Works (by ID) the person took out of the library, so "Keep in sync" doesn't put
+    /// them back. Optional so accounts saved by older versions still decode.
+    var skippedWorks: [String]? = nil
 }
 
 /// Keeps a signed-in site's cookies in the Keychain, one item per source, so the session

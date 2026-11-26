@@ -358,13 +358,17 @@ struct TextReaderScreen: View {
         paragraphs = []
         translated = nil
         showOriginal = false
-        let saved = context.savedProgress(chapterID)
+        let loading = chapterID
+        let saved = context.savedProgress(loading)
         restore = saved.progress
         progress = saved.progress
-        let result = await context.load(chapterID)
+        let result = await context.load(loading)
+        // Source calls don't stop when the task is cancelled. If the person moved to another
+        // chapter while this one loaded, its content and position belong to that chapter's load.
+        guard !Task.isCancelled, loading == chapterID else { return }
         if case let .loaded(content) = result { words = Self.wordCount(content) }
         phase = result
-        context.save(chapterID, progress: saved.progress)
+        context.save(loading, progress: saved.progress)
     }
 
     private func go(_ delta: Int) {
@@ -504,8 +508,11 @@ struct PagedReaderScreen: View {
 
     private func load() async {
         phase = .loading
-        let saved = context.savedProgress(chapterID)
-        let result = await context.load(chapterID)
+        let loading = chapterID
+        let saved = context.savedProgress(loading)
+        let result = await context.load(loading)
+        // A late result for a chapter the person already left must not replace the new one.
+        guard !Task.isCancelled, loading == chapterID else { return }
         if case let .loaded(.images(pages)) = result {
             let start = startAtEnd ? max(0, pages.count - 1) : min(saved.page ?? 0, max(0, pages.count - 1))
             startPage = start
@@ -636,7 +643,10 @@ struct VerticalReaderScreen: View {
     private func restart() async {
         strip = []
         phase = .loading
-        let result = await context.load(chapterID)
+        let loading = chapterID
+        let result = await context.load(loading)
+        // Picking two chapters quickly starts two restarts; only the newest one's result counts.
+        guard loading == chapterID else { return }
         switch result {
         case let .loaded(.images(pages)):
             startStrip(with: pages)
