@@ -532,7 +532,7 @@ struct PagedReaderScreen: View {
             prefetched.insert(next.id)
             Task {
                 if case let .loaded(.images(pages)) = await context.load(next.id) {
-                    ImageLoader.shared.prefetch(Array(pages.prefix(3)), width: UIScreen.main.bounds.width * 1.5)
+                    ImageLoader.shared.prefetch(Array(pages.prefix(3)), width: ZoomingPageController.decodeWidth(UIScreen.main.bounds.width))
                 }
             }
         }
