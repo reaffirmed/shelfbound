@@ -951,7 +951,7 @@ extension Array where Element == WorkSummary {
 }
 
 /// Forgiving genre matching for the find field: case and accents don't matter, any part
-/// of a name matches, and a letter or two off still finds it ("haram" finds Harem).
+/// of a name matches, and a letter or two off still finds it ("romanse" finds Romance).
 enum GenreMatch {
     static func fold(_ text: String) -> String {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
