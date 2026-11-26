@@ -491,62 +491,32 @@ struct SourceSearchView: View {
     /// Pages in a row that brought only works already shown.
     @State private var repeatPages = 0
 
+    /// Search results as covers get a scroll view of their own instead of the List (see
+    /// PagedCoverGrid). The genre grid, browse lists and list layout stay in the List.
+    private var coverResults: Bool { layout == .covers && !results.isEmpty && !showingListings }
+
     var body: some View {
-        List {
-            if idle && !chipGrids.isEmpty {
-                ForEach(chipGrids) { filter in
-                    Section {
-                        GenreGrid(filter: filter, values: $staged)
-                    } header: {
-                        Text(filter.label)
-                    }
-                }
-            }
-            if showingListings {
-                ForEach(listings) { listing in
-                    ListingSection(source: source, listing: listing)
-                }
-            } else {
-                if let error { Text(error).foregroundStyle(Color.shelfWarning) }
-                Group {
-                    if layout == .covers {
-                        CoverGrid(items: results.map { work in
-                            CoverGrid.Item(
-                                route: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work),
-                                format: work.format ?? source.manifest.defaultFormat)
-                        }) { opened = $0 }
-                    } else {
-                        ForEach(results) { work in
-                            NavigationLink(value: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work)) {
-                                WorkCard(work: work, format: work.format ?? source.manifest.defaultFormat)
-                            }
-                            .accessibilityIdentifier("work.result")
-                        }
-                    }
-                    if hasMore {
-                        // Scrolling to the end loads the next page. The task restarts when the
-                        // page changes, so it keeps going while this row stays on screen. The
-                        // load runs in its own Task: this row's task is cancelled whenever the
-                        // row scrolls away or the list redraws, and a cancelled load used to
-                        // end the paging after the first page or two.
-                        HStack {
-                            Spacer()
-                            if error != nil && page > 0 {
-                                Button("Try again") { loadNextPage(retry: true) }
-                            } else {
-                                ProgressView()
-                            }
-                            Spacer()
-                        }
-                        .listRowBackground(Color.clear)
-                        .task(id: page) { loadNextPage(retry: false) }
-                    }
-                }
-                // A fresh view per layout, so switching mid-search never diffs a list
-                // against a grid.
-                .id(layout)
+        // A ZStack rather than a Group, so the modifiers below attach once to a container
+        // that stays put, not separately to each branch (which would reset the search
+        // field when the results swap the List for the grid).
+        ZStack {
+            if coverResults {
+                PagedCoverGrid(
+                    items: results.map { work in
+                        CoverGrid.Item(
+                            route: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work),
+                            format: work.format ?? source.manifest.defaultFormat)
+                    },
+                    page: page,
+                    hasMore: hasMore,
+                    failed: error != nil,
+                    loadMore: { loadNextPage(retry: $0) },
+                    open: { opened = $0 }
+                )
                 .opacity(reloading ? 0.35 : 1)
                 .allowsHitTesting(!reloading)
+            } else {
+                resultsList
             }
         }
         // One background for the list and the chip bar, so they match when the list is empty.
@@ -622,6 +592,46 @@ struct SourceSearchView: View {
         .onChange(of: model.verifiedCount) { _, _ in
             if error != nil, !query.isEmpty { Task { await run(page: 1) } }
         }
+    }
+
+    /// The genre grid and browse lists before searching, and results in the list layout.
+    private var resultsList: some View {
+        // Fetch the next page while this many rows are still below, not at the last one.
+        let trigger = Set(results.suffix(10).map(\.id))
+        return List {
+            if idle && !chipGrids.isEmpty {
+                ForEach(chipGrids) { filter in
+                    Section {
+                        GenreGrid(filter: filter, values: $staged)
+                    } header: {
+                        Text(filter.label)
+                    }
+                }
+            }
+            if showingListings {
+                ForEach(listings) { listing in
+                    ListingSection(source: source, listing: listing)
+                }
+            } else {
+                if let error, results.isEmpty || !hasMore { Text(error).foregroundStyle(Color.shelfWarning) }
+                // No modifiers on a Group of rows here: SwiftUI copies them onto every row,
+                // and an .id() there once gave every row the same identity, which made the
+                // list leave big gaps and jump when a page was added.
+                ForEach(results) { work in
+                    NavigationLink(value: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work)) {
+                        WorkCard(work: work, format: work.format ?? source.manifest.defaultFormat)
+                    }
+                    .accessibilityIdentifier("work.result")
+                    .onAppear { if hasMore, trigger.contains(work.id) { loadNextPage(retry: false) } }
+                }
+                if hasMore && !results.isEmpty {
+                    PageFooter(hasMore: true, failed: error != nil, page: page) { loadNextPage(retry: $0) }
+                        .listRowBackground(Color.clear)
+                }
+            }
+        }
+        .opacity(reloading ? 0.35 : 1)
+        .allowsHitTesting(!reloading)
     }
 
     /// The chips sit under the search field and stay put while results scroll.

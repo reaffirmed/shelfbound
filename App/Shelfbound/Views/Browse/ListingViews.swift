@@ -170,7 +170,8 @@ struct ListingTile: View {
     }
 }
 
-/// The whole of one browse list, loading more as you scroll.
+/// The whole of one browse list ("See all"), as a grid of covers that loads more as you
+/// scroll.
 @MainActor
 struct ListingView: View {
     @Environment(AppModel.self) private var model
@@ -182,24 +183,30 @@ struct ListingView: View {
     @State private var loading = false
     @State private var error: String?
     @State private var verifying: VerificationRequest?
+    @State private var opened: WorkRoute?
 
     var body: some View {
-        List {
-            ForEach(results) { work in
-                NavigationLink(value: WorkRoute(key: WorkKey(sourceID: route.source.id, workID: work.id), summary: work)) {
-                    WorkCard(work: work, format: work.format ?? route.source.manifest.defaultFormat)
+        PagedCoverGrid(
+            items: results.map { work in
+                CoverGrid.Item(
+                    route: WorkRoute(key: WorkKey(sourceID: route.source.id, workID: work.id), summary: work),
+                    format: work.format ?? route.source.manifest.defaultFormat)
+            },
+            page: page,
+            hasMore: hasMore && !results.isEmpty,
+            failed: error != nil,
+            loadMore: { retry in loadNext(retry: retry) },
+            open: { opened = $0 }
+        ) {
+            if let error, results.isEmpty {
+                VStack(spacing: 8) {
+                    Text(error).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Button("Try again") { loadNext(retry: true) }
                 }
-                .onAppear { if work.id == results.last?.id { Task { await load(page + 1) } } }
-            }
-            if let error {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(error).font(.footnote).foregroundStyle(.secondary)
-                    Button("Try again") { Task { await load(page + 1) } }
-                }
-            } else if loading && !results.isEmpty {
-                HStack { Spacer(); ProgressView(); Spacer() }.listRowBackground(Color.clear)
+                .padding(.horizontal, 20).padding(.top, 40)
             }
         }
+        .background(Color(.systemBackground))
         .overlay {
             if results.isEmpty && loading {
                 ProgressView()
@@ -209,9 +216,19 @@ struct ListingView: View {
         }
         .navigationTitle(route.listing.title)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $opened) { WorkDetailView(route: $0) }
         .refreshable { await load(1, refresh: true) }
         .browserVerification($verifying)
         .task { if results.isEmpty { await load(1) } }
+    }
+
+    /// Runs in a Task of its own, so a tile or the footer scrolling away (which cancels
+    /// their tasks) can't cancel the page halfway.
+    private func loadNext(retry: Bool) {
+        guard !loading, hasMore, retry || error == nil else { return }
+        if retry { error = nil }
+        let next = results.isEmpty ? 1 : page + 1
+        Task { await load(next) }
     }
 
     private func load(_ next: Int, refresh: Bool = false) async {
@@ -223,8 +240,9 @@ struct ListingView: View {
             if next == 1 {
                 results = result.results.uniqued()
             } else {
-                let seen = Set(results.map(\.id))
-                results += result.results.uniqued().filter { !seen.contains($0.id) }
+                // Only works not already shown: a repeated ID makes the grid drop or redraw tiles.
+                var seen = Set(results.map(\.id))
+                results += result.results.filter { seen.insert($0.id).inserted }
             }
             page = next
             hasMore = result.hasMore && !result.results.isEmpty
@@ -232,6 +250,7 @@ struct ListingView: View {
         } catch is CancellationError {
             return
         } catch {
+            if (error as? URLError)?.code == .cancelled { return }
             self.error = error.readable
             if let request = error.verification { verifying = request }
         }
