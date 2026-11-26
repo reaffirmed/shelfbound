@@ -161,16 +161,29 @@ public actor URLSessionNetwork: HostNetwork {
 
     private let clearances: ClearanceStore?
     private let accounts: AccountCookieJars?
+    private let browserFetch: BrowserFetch?
+    /// Hosts that still showed the bot check to the app's own requests after the person
+    /// passed it in the browser. Their requests go through `browserFetch` from then on.
+    private var browserHosts: Set<String> = []
+
+    /// Sends a request from the browser the person passed the check in, for sites whose
+    /// pass works there but not for the app's own requests. Returns nil when it can't.
+    public typealias BrowserFetch = @Sendable (URLRequest) async throws -> HostResponse?
 
     public init(
         session: URLSession = .shared, minimumInterval: Duration = .milliseconds(1000),
-        clearances: ClearanceStore? = nil, accounts: AccountCookieJars? = nil
+        clearances: ClearanceStore? = nil, accounts: AccountCookieJars? = nil,
+        browserFetch: BrowserFetch? = nil
     ) {
         self.session = session
         self.defaultInterval = minimumInterval
         self.clearances = clearances
         self.accounts = accounts
+        self.browserFetch = browserFetch
     }
+
+    /// Whether requests to `host` go through the browser.
+    public func usesBrowser(for host: String) -> Bool { browserHosts.contains(host.lowercased()) }
 
     /// Uses a longer gap for one source, from its manifest's `rateLimit`. Never shorter than the default.
     public func setMinimumInterval(_ interval: Duration, for sourceID: String) {
@@ -183,6 +196,13 @@ public actor URLSessionNetwork: HostNetwork {
 
     public func fetch(_ request: URLRequest, sourceID: String, options: FetchOptions) async throws -> HostResponse {
         try await waitForSlot(sourceID)
+
+        // A signed-in source's requests stay with its own cookie jar, never the browser's.
+        let canUseBrowser = browserFetch != nil && options.followRedirects && accounts?.hasJar(for: sourceID) != true
+        if canUseBrowser, let host = request.url?.host?.lowercased(), browserHosts.contains(host),
+           let response = try await fetchInBrowser(request) {
+            return response
+        }
 
         var request = request
         if let url = request.url, let browserAgent = clearances?.userAgent(for: url) {
@@ -199,11 +219,17 @@ public actor URLSessionNetwork: HostNetwork {
             }
         }
         let session = accountSession ?? self.session
+        // A source that sends its own Cookie header still needs the stored ones, above all
+        // the browser check's clearance cookie.
+        let cookieStore = accountSession.flatMap { accounts?.storage(for: $0) }
+            ?? session.configuration.httpCookieStorage ?? .shared
+        let manualCookies = request.includeStoredCookies(from: cookieStore)
         #if canImport(FoundationNetworking)
         let (data, response) = try await session.data(for: request)
         #else
         let (data, response) = try await session.data(for: request, delegate: RedirectGuard(options: options))
         #endif
+        if manualCookies { cookieStore.keepCookies(from: response) }
         if let accountSession { accounts?.noteResponse(for: sourceID, session: accountSession) }
         let http = response as? HTTPURLResponse
         var headers: [String: String] = [:]
@@ -215,6 +241,14 @@ public actor URLSessionNetwork: HostNetwork {
         }
         let body = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
         if let url = request.url, BrowserChallenge.isChallenge(status: http?.statusCode ?? 0, headers: headers, body: body) {
+            // The person passed the check in the browser and the site still stops the app's
+            // own requests (Cloudflare can tell them apart from the browser's). Ask from the
+            // browser instead, and keep doing that for this host.
+            if canUseBrowser, clearances?.userAgent(for: url) != nil, let host = url.host?.lowercased(),
+               let response = try await fetchInBrowser(request) {
+                browserHosts.insert(host)
+                return response
+            }
             throw BrowserVerificationNeeded(url: url)
         }
         return HostResponse(
@@ -223,6 +257,19 @@ public actor URLSessionNetwork: HostNetwork {
             headers: headers,
             body: body
         )
+    }
+
+    /// The response from the browser, or nil when it couldn't send the request. Throws
+    /// when the browser is shown the check too, so the person is asked to verify again.
+    private func fetchInBrowser(_ request: URLRequest) async throws -> HostResponse? {
+        guard let browserFetch, let url = request.url else { return nil }
+        guard let response = try? await browserFetch(request) else { return nil }
+        var headers: [String: String] = [:]
+        for (key, value) in response.headers { headers[key.lowercased()] = value }
+        if BrowserChallenge.isChallenge(status: response.status, headers: headers, body: response.body) {
+            throw BrowserVerificationNeeded(url: url)
+        }
+        return HostResponse(status: response.status, url: response.url, headers: headers, body: response.body)
     }
 
     private func waitForSlot(_ sourceID: String) async throws {
