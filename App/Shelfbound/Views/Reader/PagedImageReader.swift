@@ -212,7 +212,7 @@ final class PagedImageReaderController: UIViewController, UIPageViewControllerDa
 
     private func prefetch(around index: Int) {
         let upcoming = pages.indices.filter { $0 > index && $0 <= index + 3 }.map { pages[$0] }
-        ImageLoader.shared.prefetch(upcoming, width: view.bounds.width)
+        ImageLoader.shared.prefetch(upcoming, width: ZoomingPageController.decodeWidth(view.bounds.width))
     }
 
     private func index(of vc: UIViewController) -> Int {
@@ -255,6 +255,13 @@ final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let retry = UIButton(type: .system)
     private var task: Task<Void, Never>?
+
+    /// Width in points to decode pages at. Wider than the screen (never wider than the
+    /// source), so a page zoomed in stays sharp. Prefetches must use the same width, or
+    /// they land under a different cache key and the page loads again.
+    static func decodeWidth(_ viewWidth: CGFloat) -> CGFloat {
+        max(viewWidth, UIScreen.main.bounds.width) * 2.5
+    }
 
     init(page: ImagePage) {
         self.page = page
@@ -310,7 +317,7 @@ final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
 
     @objc private func load() {
         retry.isHidden = true
-        let width = max(view.bounds.width, UIScreen.main.bounds.width) * 1.5 // decode a little larger for zoom
+        let width = Self.decodeWidth(view.bounds.width)
         if let hit = ImageLoader.shared.cached(page, width: width) {
             imageView.image = hit
             findPanels()

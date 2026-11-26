@@ -86,6 +86,13 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
     private var displayLink: CADisplayLink?
     private var lastTick: CFTimeInterval = 0
     private let footerHeight: CGFloat = 150
+    /// Pinch zoom: the whole strip is scaled inside this, and scrolls on underneath.
+    private let zoomView = UIScrollView()
+    private let zoomHandler = StripZoom()
+    private let maxZoom: CGFloat = 3
+    /// Pages are decoded this many times wider than the screen (never wider than the
+    /// source), so they stay sharp when zoomed in.
+    private let zoomDecodeFactor: CGFloat = 2
 
     private lazy var collectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
@@ -104,21 +111,64 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        collectionView.frame = view.bounds
-        collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        view.addSubview(collectionView)
+        view.backgroundColor = .black
+        zoomView.frame = view.bounds
+        zoomView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        zoomView.backgroundColor = .black
+        zoomView.minimumZoomScale = 1
+        zoomView.maximumZoomScale = maxZoom
+        zoomView.bouncesZoom = true
+        zoomView.showsVerticalScrollIndicator = false
+        zoomView.showsHorizontalScrollIndicator = false
+        zoomView.contentInsetAdjustmentBehavior = .never
+        zoomView.scrollsToTop = false
+        zoomHandler.content = collectionView
+        zoomView.delegate = zoomHandler
+        view.addSubview(zoomView)
+        collectionView.frame = zoomView.bounds
+        zoomView.addSubview(collectionView)
+        let double = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
+        double.numberOfTapsRequired = 2
+        double.cancelsTouchesInView = false
+        collectionView.addGestureRecognizer(double)
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped))
         tap.cancelsTouchesInView = false
+        tap.require(toFail: double)
         collectionView.addGestureRecognizer(tap)
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        // The strip is laid out at screen size; zooming scales it, so only resize it unzoomed.
+        if zoomView.zoomScale <= 1, collectionView.frame.size != zoomView.bounds.size {
+            collectionView.frame = CGRect(origin: .zero, size: zoomView.bounds.size)
+            zoomView.contentSize = zoomView.bounds.size
+        }
         applyPendingStart()
+    }
+
+    /// Double tap: zoom in to 2x around the tap, or back out.
+    @objc private func doubleTapped(_ gesture: UITapGestureRecognizer) {
+        if zoomView.zoomScale > 1.01 {
+            zoomView.setZoomScale(1, animated: true)
+            return
+        }
+        // Where the tap is on the (unzoomed) screen-sized strip view.
+        let inStrip = gesture.location(in: collectionView)
+        let point = CGPoint(x: inStrip.x - collectionView.bounds.minX, y: inStrip.y - collectionView.bounds.minY)
+        let scale: CGFloat = 2
+        let size = zoomView.bounds.size
+        UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseInOut, .allowUserInteraction]) {
+            self.zoomView.zoomScale = scale
+            let x = min(max(0, point.x * scale - size.width / 2), size.width * scale - size.width)
+            let y = min(max(0, point.y * scale - size.height / 2), size.height * scale - size.height)
+            self.zoomView.contentOffset = CGPoint(x: x, y: y)
+        }
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
+        zoomView.setZoomScale(1, animated: false)
         let position = currentPosition()
         coordinator.animate(alongsideTransition: { _ in
             self.collectionView.collectionViewLayout.invalidateLayout()
@@ -282,11 +332,11 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "page", for: indexPath) as! StripCell
         let page = chapters[indexPath.section].pages[indexPath.item]
-        let width = collectionView.bounds.width
-        cell.show(page, width: width) { [weak self] aspect in
+        let decodeWidth = collectionView.bounds.width * zoomDecodeFactor
+        cell.show(page, decodeWidth: decodeWidth) { [weak self] aspect in
             self?.learned(aspect: aspect, for: page.url, at: indexPath)
         }
-        prefetch(after: indexPath, width: width)
+        prefetch(after: indexPath, width: decodeWidth)
         return cell
     }
 
@@ -306,9 +356,9 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
             }
             let page = pages[item]
             let target = IndexPath(item: item, section: section)
-            if ImageLoader.shared.cached(page, width: width) == nil {
+            if ImageLoader.shared.cachedSlices(page, width: width) == nil {
                 Task(priority: .utility) { [weak self] in
-                    guard let loaded = try? await ImageLoader.shared.load(page, width: width, urgent: false) else { return }
+                    guard let loaded = try? await ImageLoader.shared.load(page, width: width, urgent: false, sliced: true) else { return }
                     self?.learned(aspect: loaded.aspect, for: page.url, at: target)
                 }
             }
@@ -383,8 +433,15 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
     }
 }
 
+/// The zoom view's delegate: kept apart from the controller, which is the strip's own
+/// scroll delegate and would otherwise get the zoom view's scroll events too.
+final class StripZoom: NSObject, UIScrollViewDelegate {
+    weak var content: UIView?
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? { content }
+}
+
 final class StripCell: UICollectionViewCell {
-    private let imageView = UIImageView()
+    private let pageView = SlicedImageView()
     private let spinner = UIActivityIndicatorView(style: .medium)
     private var task: Task<Void, Never>?
     private var url: URL?
@@ -392,11 +449,9 @@ final class StripCell: UICollectionViewCell {
     override init(frame: CGRect) {
         super.init(frame: frame)
         contentView.backgroundColor = .black
-        // Never stretch: if a cell's height is ever off, the page shows letterboxed, not squashed.
-        imageView.contentMode = .scaleAspectFit
-        imageView.frame = contentView.bounds
-        imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        contentView.addSubview(imageView)
+        pageView.frame = contentView.bounds
+        pageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        contentView.addSubview(pageView)
         spinner.color = .gray
         spinner.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(spinner)
@@ -411,16 +466,19 @@ final class StripCell: UICollectionViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         task?.cancel()
-        imageView.image = nil
+        pageView.slices = []
         url = nil
     }
 
-    func show(_ page: ImagePage, width: CGFloat, learned: @escaping (CGFloat) -> Void) {
+    /// `decodeWidth` is the width in points to decode at: wider than the cell, so the page
+    /// stays sharp when zoomed in.
+    func show(_ page: ImagePage, decodeWidth: CGFloat, learned: @escaping (CGFloat) -> Void) {
         url = page.url
-        if let hit = ImageLoader.shared.cached(page, width: width) {
-            imageView.image = hit
+        if let hit = ImageLoader.shared.cachedSlices(page, width: decodeWidth) {
+            pageView.slices = hit
             spinner.stopAnimating()
-            let aspect = ImageLoader.shared.knownAspect(page.url) ?? hit.size.height / max(hit.size.width, 1)
+            let height = hit.reduce(0) { $0 + $1.size.height }
+            let aspect = ImageLoader.shared.knownAspect(page.url) ?? height / max(hit[0].size.width, 1)
             // Sizes the cell if it was laid out before the image's shape was known
             // (applied after this cell is handed back, together with any others).
             learned(aspect)
@@ -428,13 +486,51 @@ final class StripCell: UICollectionViewCell {
         }
         spinner.startAnimating()
         task = Task { [weak self] in
-            let loaded = try? await ImageLoader.shared.load(page, width: width)
+            let loaded = try? await ImageLoader.shared.load(page, width: decodeWidth, sliced: true)
             guard let self, self.url == page.url, !Task.isCancelled else { return }
             self.spinner.stopAnimating()
             if let loaded {
-                self.imageView.image = loaded.image
+                self.pageView.slices = loaded.slices
                 learned(loaded.aspect)
             }
+        }
+    }
+}
+
+/// A page shown as slices stacked top to bottom (a tall strip is cut up so the GPU can draw
+/// it at full size). The whole page is fitted in the view without stretching: if a cell's
+/// height is ever off, the page shows letterboxed, not squashed.
+final class SlicedImageView: UIView {
+    var slices: [UIImage] = [] {
+        didSet {
+            while views.count < slices.count {
+                let view = UIImageView()
+                view.contentMode = .scaleToFill
+                addSubview(view)
+                views.append(view)
+            }
+            for (i, view) in views.enumerated() {
+                view.image = i < slices.count ? slices[i] : nil
+                view.isHidden = i >= slices.count
+            }
+            setNeedsLayout()
+        }
+    }
+
+    private var views: [UIImageView] = []
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let first = slices.first, first.size.width > 0, bounds.width > 0 else { return }
+        let total = slices.reduce(0) { $0 + $1.size.height }
+        let fit = min(bounds.width / first.size.width, bounds.height / max(total, 1))
+        let size = CGSize(width: first.size.width * fit, height: total * fit)
+        var y = (bounds.height - size.height) / 2
+        let x = (bounds.width - size.width) / 2
+        for (i, slice) in slices.enumerated() {
+            let h = slice.size.height * fit
+            views[i].frame = CGRect(x: x, y: y, width: size.width, height: h)
+            y += h
         }
     }
 }
