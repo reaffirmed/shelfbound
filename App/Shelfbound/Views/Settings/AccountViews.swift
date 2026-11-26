@@ -273,10 +273,11 @@ struct AccountListView: View {
         do {
             let result = try await model.accountList(sourceID: source.id, listID: list.id, page: next)
             if next == 1 {
-                results = result.results
+                // AO3 repeats a work when a bookmark changes between pages; a repeated ID breaks the list.
+                results = result.results.uniqued()
             } else {
                 let seen = Set(results.map(\.id))
-                results += result.results.filter { !seen.contains($0.id) }
+                results += result.results.uniqued().filter { !seen.contains($0.id) }
             }
             page = next
             hasMore = result.hasMore && !result.results.isEmpty

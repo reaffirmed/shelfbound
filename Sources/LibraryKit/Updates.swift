@@ -42,15 +42,42 @@ public struct UpdateReport: Sendable, Hashable {
 }
 
 public enum UpdateChecker {
+    /// Why a fetched chapter list shouldn't replace the saved one, or nil when it's fine.
+    /// A source returns an empty or much shorter list when the site sends a page it didn't
+    /// expect (maintenance, a bot check, a redesign). Taking that list would wipe the work's
+    /// chapters, and the next good check would then mark every unread chapter as new.
+    public static func suspiciousList(_ fetched: [Chapter], replacing known: [Chapter]) -> String? {
+        guard !known.isEmpty else { return nil }
+        if fetched.isEmpty {
+            return "The source returned no chapters. Kept the \(known.count) already saved."
+        }
+        if known.count >= 10, fetched.count * 2 < known.count {
+            return "The source returned only \(fetched.count) of \(known.count) chapters. Kept the saved list."
+        }
+        return nil
+    }
+
     /// Merges a fresh chapter list into a record. Chapters not seen before are recorded as
-    /// new, unless this is the first time the work's chapters were fetched.
+    /// new, unless this is the first time the work's chapters were fetched. A list that
+    /// `suspiciousList` rejects leaves the record as it was.
+    ///
+    /// Only chapters after the last one already known count as new, plus at most a few
+    /// that slot in earlier (an extra like 12.5). Many unknown chapters before the last
+    /// known one mean the source is filling back in a list it cut short, not new releases.
+    @discardableResult
     public static func apply(_ fetched: [Chapter], to record: inout WorkRecord, now: Date = Date()) -> [Chapter] {
+        if suspiciousList(fetched, replacing: record.chapters) != nil { return [] }
         let known = Set(record.chapters.map(\.id))
         let isFirstFetch = record.chapters.isEmpty
         record.chapters = fetched
         record.lastCheckedAt = now
         guard !isFirstFetch else { return [] }
-        let new = fetched.filter { !known.contains($0.id) && !record.readChapterIDs.contains($0.id) }
+        let lastKnown = fetched.lastIndex { known.contains($0.id) } ?? -1
+        let unknown = fetched.indices.filter { !known.contains(fetched[$0].id) && !record.readChapterIDs.contains(fetched[$0].id) }
+        let earlier = unknown.filter { $0 < lastKnown }
+        let maxEarlier = 3
+        let picked = unknown.filter { $0 > lastKnown || earlier.count <= maxEarlier }
+        let new = picked.map { fetched[$0] }
         for chapter in new where !record.newChapterIDs.contains(chapter.id) {
             record.newChapterIDs.append(chapter.id)
         }
@@ -95,6 +122,10 @@ public enum UpdateChecker {
             switch result {
             case let .success(chapters):
                 guard var record = state[key] else { continue }
+                if let problem = suspiciousList(chapters, replacing: record.chapters) {
+                    report.failures[key] = problem
+                    continue
+                }
                 let new = apply(chapters, to: &record, now: now)
                 state[key] = record
                 if !new.isEmpty {
