@@ -20,6 +20,8 @@ final class ImageLoader: @unchecked Sendable {
     private let session: URLSession
     private let lock = NSLock()
     private var inFlight: [String: Task<Loaded, Error>] = [:]
+    /// Hosts whose pages load only from the browser (see `BrowserFetcher`).
+    private var browserHosts: Set<String> = []
     private var hostSlots: [String: Int] = [:]
     /// Requests waiting for a free slot on a host. Pages on screen go before prefetches,
     /// so a fast scroll never leaves the page you're looking at stuck behind ones you passed.
@@ -114,11 +116,25 @@ final class ImageLoader: @unchecked Sendable {
             } else if request.value(forHTTPHeaderField: "User-Agent") == nil {
                 request.setValue("Shelfbound/0.2 (iOS reader)", forHTTPHeaderField: "User-Agent")
             }
+            if lock.withLock({ browserHosts.contains(host) }),
+               let viaBrowser = try? await BrowserFetcher.shared.fetch(request), (200..<300).contains(viaBrowser.status) {
+                try Task.checkCancellation()
+                return try decode(viaBrowser.body, url: page.url, width: width)
+            }
             let (body, response) = try await session.data(for: request)
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                 var headers: [String: String] = [:]
                 for (key, value) in http.allHeaderFields { headers[String(describing: key).lowercased()] = String(describing: value) }
                 if BrowserChallenge.isChallenge(status: http.statusCode, headers: headers, body: String(decoding: body.prefix(20_000), as: UTF8.self)) {
+                    // Passed in the browser, but the site still stops the app's own requests:
+                    // ask from the browser instead.
+                    if ClearanceStore.shared.userAgent(for: page.url) != nil,
+                       let viaBrowser = try? await BrowserFetcher.shared.fetch(request),
+                       (200..<300).contains(viaBrowser.status) {
+                        lock.withLock { _ = browserHosts.insert(host) }
+                        try Task.checkCancellation()
+                        return try decode(viaBrowser.body, url: page.url, width: width)
+                    }
                     throw BrowserVerificationNeeded(url: page.url)
                 }
                 throw URLError(.badServerResponse, userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode)"])

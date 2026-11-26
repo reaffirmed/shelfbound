@@ -124,13 +124,17 @@ struct VerificationWebView: UIViewRepresentable {
     let controller: VerificationController
     let onCleared: () -> Void
 
+    /// Added to the web view's User-Agent. The clearance cookie is tied to the whole
+    /// User-Agent, so every web view that uses it must add the same.
+    static let applicationName = "Version/17.0 Mobile/15E148 Safari/604.1"
+
     func makeCoordinator() -> Coordinator { Coordinator(host: host, onCleared: onCleared) }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         // A normal browser, so the site's own check can run. Cookies persist like Safari's.
         config.websiteDataStore = .default()
-        config.applicationNameForUserAgent = "Version/17.0 Mobile/15E148 Safari/604.1"
+        config.applicationNameForUserAgent = Self.applicationName
         let view = WKWebView(frame: .zero, configuration: config)
         view.navigationDelegate = context.coordinator
         controller.webView = view
