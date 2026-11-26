@@ -21,7 +21,28 @@ final class ImageLoader: @unchecked Sendable {
     private let lock = NSLock()
     private var inFlight: [String: Task<Loaded, Error>] = [:]
     private var hostSlots: [String: Int] = [:]
-    private var waiters: [String: [CheckedContinuation<Void, Never>]] = [:]
+    /// Requests waiting for a free slot on a host. Pages on screen go before prefetches,
+    /// so a fast scroll never leaves the page you're looking at stuck behind ones you passed.
+    private var waiters: [String: HostQueue] = [:]
+    /// Keys of loads still waiting for a slot as prefetches, so a page that comes on screen
+    /// can move its own load to the front.
+    private var waitingInBackground: Set<String> = []
+
+    private struct Waiter {
+        let key: String
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
+    private struct HostQueue {
+        var urgent: [Waiter] = []
+        var background: [Waiter] = []
+        var isEmpty: Bool { urgent.isEmpty && background.isEmpty }
+        mutating func next() -> Waiter? {
+            if !urgent.isEmpty { return urgent.removeFirst() }
+            if !background.isEmpty { return background.removeFirst() }
+            return nil
+        }
+    }
     private let perHost = 4
     /// Largest decoded image, in pixels. Taller strips are scaled down to fit.
     private let maxPixels: CGFloat = 12_000_000
@@ -45,15 +66,21 @@ final class ImageLoader: @unchecked Sendable {
         aspects.object(forKey: url.absoluteString as NSString).map { CGFloat($0.doubleValue) }
     }
 
-    /// `width` is in points; the image is decoded at screen scale.
-    func load(_ page: ImagePage, width: CGFloat) async throws -> Loaded {
+    /// `width` is in points; the image is decoded at screen scale. `urgent` is false for
+    /// prefetches, which wait behind pages that are on screen.
+    func load(_ page: ImagePage, width: CGFloat, urgent: Bool = true) async throws -> Loaded {
         let k = key(page.url, width)
         if let image = cache.object(forKey: k as NSString) {
             return Loaded(image: image, aspect: knownAspect(page.url) ?? image.size.height / max(image.size.width, 1))
         }
         let task: Task<Loaded, Error> = lock.withLock {
-            if let existing = inFlight[k] { return existing }
-            let created = Task { try await self.fetchAndDecode(page, width: width) }
+            if let existing = inFlight[k] {
+                if urgent { promote(k, host: page.url.host ?? "") }
+                return existing
+            }
+            let created = Task(priority: urgent ? .userInitiated : .utility) {
+                try await self.fetchAndDecode(page, width: width, key: k, urgent: urgent)
+            }
             inFlight[k] = created
             return created
         }
@@ -65,19 +92,19 @@ final class ImageLoader: @unchecked Sendable {
 
     func prefetch(_ pages: [ImagePage], width: CGFloat) {
         for page in pages where cached(page, width: width) == nil {
-            Task(priority: .utility) { _ = try? await self.load(page, width: width) }
+            Task(priority: .utility) { _ = try? await self.load(page, width: width, urgent: false) }
         }
     }
 
     private func key(_ url: URL, _ width: CGFloat) -> String { "\(Int(width))|\(url.absoluteString)" }
 
-    private func fetchAndDecode(_ page: ImagePage, width: CGFloat) async throws -> Loaded {
+    private func fetchAndDecode(_ page: ImagePage, width: CGFloat, key: String, urgent: Bool) async throws -> Loaded {
         let data: Data
         if page.url.isFileURL {
             data = try Data(contentsOf: page.url)
         } else {
             let host = page.url.host ?? ""
-            await acquire(host)
+            await acquire(host, key: key, urgent: urgent)
             defer { release(host) }
             var request = URLRequest(url: page.url)
             for (field, value) in page.headers ?? [:] { request.setValue(value, forHTTPHeaderField: field) }
@@ -141,7 +168,7 @@ final class ImageLoader: @unchecked Sendable {
         }
     }
 
-    private func acquire(_ host: String) async {
+    private func acquire(_ host: String, key: String, urgent: Bool) async {
         if tryAcquire(host) { return }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let acquired: Bool = lock.withLock {
@@ -149,20 +176,35 @@ final class ImageLoader: @unchecked Sendable {
                     hostSlots[host, default: 0] += 1
                     return true
                 }
-                waiters[host, default: []].append(continuation)
+                let waiter = Waiter(key: key, continuation: continuation)
+                if urgent {
+                    waiters[host, default: HostQueue()].urgent.append(waiter)
+                } else {
+                    waiters[host, default: HostQueue()].background.append(waiter)
+                    waitingInBackground.insert(key)
+                }
                 return false
             }
             if acquired { continuation.resume() }
         }
     }
 
+    /// Call with `lock` held: moves a waiting prefetch to the front of its host's queue.
+    private func promote(_ key: String, host: String) {
+        guard waitingInBackground.contains(key), var queue = waiters[host],
+              let index = queue.background.firstIndex(where: { $0.key == key }) else { return }
+        queue.urgent.append(queue.background.remove(at: index))
+        waiters[host] = queue
+        waitingInBackground.remove(key)
+    }
+
     private func release(_ host: String) {
         lock.lock()
-        if var queue = waiters[host], !queue.isEmpty {
-            let next = queue.removeFirst()
-            waiters[host] = queue
+        if var queue = waiters[host], let next = queue.next() {
+            waiters[host] = queue.isEmpty ? nil : queue
+            waitingInBackground.remove(next.key)
             lock.unlock()
-            next.resume() // hand the slot straight to the next waiter
+            next.continuation.resume() // hand the slot straight to the next waiter
         } else {
             hostSlots[host] = max(0, hostSlots[host, default: 0] - 1)
             lock.unlock()

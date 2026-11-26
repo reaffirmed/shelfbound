@@ -72,6 +72,17 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
     private var aspects: [URL: CGFloat] = [:]
     private var pendingStart: (chapterID: String, progress: Double)?
     private var lastReported: (String, Int)?
+    private var lastReportTime: CFTimeInterval = 0
+    /// When "near the end" was last sent: once a second is plenty to start (or retry) loading
+    /// the next chapter, instead of on every frame of scrolling.
+    private var nearEndSentAt: CFTimeInterval = 0
+    /// Pages whose real shape arrived since the last layout pass; applied together.
+    private var pendingAspects: [IndexPath: URL] = [:]
+    private var aspectFlushScheduled = false
+    /// How many pages ahead to fetch, across chapter ends too.
+    private let prefetchAhead = 5
+    /// Saving the position updates the whole app, so while scrolling it goes at most this often.
+    private let reportInterval: CFTimeInterval = 0.5
     private var displayLink: CADisplayLink?
     private var lastTick: CFTimeInterval = 0
     private let footerHeight: CGFloat = 150
@@ -138,6 +149,8 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
             UIView.performWithoutAnimation { collectionView.insertSections(added) }
         } else {
             chapters = new
+            pendingAspects = [:]
+            nearEndSentAt = 0
             collectionView.reloadData()
             pendingStart = start
             view.setNeedsLayout()
@@ -173,6 +186,7 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
         let y = range.lowerBound + span * CGFloat(progress)
         let maxY = max(0, collectionView.contentSize.height - collectionView.bounds.height)
         collectionView.setContentOffset(CGPoint(x: 0, y: min(maxY, max(0, y))), animated: false)
+        reportPosition(force: true)
     }
 
     /// The chapter at the middle of the screen and how far through it we are.
@@ -191,16 +205,41 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
     // MARK: Scrolling
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        if let position = currentPosition() {
-            let bucket = Int(position.1 * 200)
-            if lastReported?.0 != position.0 || lastReported?.1 != bucket {
-                lastReported = (position.0, bucket)
-                callbacks.position(position.0, position.1)
+        reportPosition(force: false)
+        if scrollView.contentOffset.y + scrollView.bounds.height * 3 > scrollView.contentSize.height {
+            let now = CACurrentMediaTime()
+            if now - nearEndSentAt >= 1 {
+                nearEndSentAt = now
+                callbacks.nearEnd()
             }
         }
-        if scrollView.contentOffset.y + scrollView.bounds.height * 3 > scrollView.contentSize.height {
-            callbacks.nearEnd()
-        }
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate { reportPosition(force: true) }
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        reportPosition(force: true)
+    }
+
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        reportPosition(force: true)
+    }
+
+    /// Tells the reader where we are. Each report saves the position and redraws the reader's
+    /// bars, so while the finger or momentum is moving it's sent at most every half second
+    /// (or right away when a new chapter starts), and once more when scrolling stops.
+    private func reportPosition(force: Bool) {
+        guard let position = currentPosition() else { return }
+        let bucket = Int(position.1 * 200)
+        guard lastReported?.0 != position.0 || lastReported?.1 != bucket else { return }
+        let now = CACurrentMediaTime()
+        let newChapter = lastReported?.0 != position.0
+        guard force || newChapter || now - lastReportTime >= reportInterval else { return }
+        lastReported = (position.0, bucket)
+        lastReportTime = now
+        callbacks.position(position.0, position.1)
     }
 
     @objc private func tapped() {
@@ -216,9 +255,10 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
             link.add(to: .main, forMode: .common)
             displayLink = link
             lastTick = 0
-        } else if autoScrollSpeed <= 0 {
+        } else if autoScrollSpeed <= 0, displayLink != nil {
             displayLink?.invalidate()
             displayLink = nil
+            reportPosition(force: true)
         }
     }
 
@@ -246,11 +286,35 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
         cell.show(page, width: width) { [weak self] aspect in
             self?.learned(aspect: aspect, for: page.url, at: indexPath)
         }
-        // Prefetch a few ahead.
-        let pages = chapters[indexPath.section].pages
-        let ahead = pages.indices.filter { $0 > indexPath.item && $0 <= indexPath.item + 3 }.map { pages[$0] }
-        ImageLoader.shared.prefetch(ahead, width: width)
+        prefetch(after: indexPath, width: width)
         return cell
+    }
+
+    /// Loads the next few pages, into the next chapter too, before they're on screen. Each
+    /// one's real height is applied as soon as it arrives, while it's still off screen, so
+    /// the page doesn't change size (and shove what's below it) as it scrolls into view.
+    private func prefetch(after indexPath: IndexPath, width: CGFloat) {
+        var section = indexPath.section
+        var item = indexPath.item + 1
+        var count = 0
+        while count < prefetchAhead, section < chapters.count {
+            let pages = chapters[section].pages
+            if item >= pages.count {
+                section += 1
+                item = 0
+                continue
+            }
+            let page = pages[item]
+            let target = IndexPath(item: item, section: section)
+            if ImageLoader.shared.cached(page, width: width) == nil {
+                Task(priority: .utility) { [weak self] in
+                    guard let loaded = try? await ImageLoader.shared.load(page, width: width, urgent: false) else { return }
+                    self?.learned(aspect: loaded.aspect, for: page.url, at: target)
+                }
+            }
+            item += 1
+            count += 1
+        }
     }
 
     func collectionView(_ collectionView: UICollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> UICollectionReusableView {
@@ -275,22 +339,46 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
     /// It compares against the cell's laid-out height, not a remembered aspect: the loader
     /// records the real aspect before this runs, so comparing aspects found no change and
     /// left tall manhwa strips squeezed into the 1.4 guess.
+    ///
+    /// Several pages often arrive in the same moment (prefetches finishing together), so the
+    /// changes are gathered and applied in one layout pass instead of one per page.
     private func learned(aspect: CGFloat, for url: URL, at indexPath: IndexPath) {
         aspects[url] = aspect
-        guard indexPath.section < chapters.count,
-              indexPath.item < chapters[indexPath.section].pages.count,
-              chapters[indexPath.section].pages[indexPath.item].url == url,
-              let frame = collectionView.layoutAttributesForItem(at: indexPath)?.frame else { return }
+        pendingAspects[indexPath] = url
+        guard !aspectFlushScheduled else { return }
+        aspectFlushScheduled = true
+        DispatchQueue.main.async { [weak self] in self?.applyLearnedAspects() }
+    }
+
+    private func applyLearnedAspects() {
+        aspectFlushScheduled = false
+        let pending = pendingAspects
+        pendingAspects = [:]
         let width = collectionView.bounds.width
-        let delta = max(1, (width * aspect).rounded()) - frame.height
-        guard abs(delta) > 0.5 else { return }
-        let above = frame.maxY <= collectionView.contentOffset.y + 1
+        guard width > 0 else { return }
+        let top = collectionView.contentOffset.y
+        var changed = false
+        var shiftAbove: CGFloat = 0
+        for (indexPath, url) in pending {
+            guard indexPath.section < chapters.count,
+                  indexPath.item < chapters[indexPath.section].pages.count,
+                  chapters[indexPath.section].pages[indexPath.item].url == url,
+                  let aspect = aspects[url],
+                  let frame = collectionView.layoutAttributesForItem(at: indexPath)?.frame else { continue }
+            let delta = max(1, (width * aspect).rounded()) - frame.height
+            guard abs(delta) > 0.5 else { continue }
+            changed = true
+            // Pages wholly above the screen grow or shrink the content above us; move with
+            // them so the page being read stays put.
+            if frame.maxY <= top + 1 { shiftAbove += delta }
+        }
+        guard changed else { return }
         UIView.performWithoutAnimation {
             let context = UICollectionViewFlowLayoutInvalidationContext()
             context.invalidateFlowLayoutDelegateMetrics = true
             collectionView.collectionViewLayout.invalidateLayout(with: context)
             collectionView.layoutIfNeeded()
-            if above { collectionView.contentOffset.y += delta }
+            if shiftAbove != 0 { collectionView.contentOffset.y += shiftAbove }
         }
     }
 }
@@ -333,8 +421,9 @@ final class StripCell: UICollectionViewCell {
             imageView.image = hit
             spinner.stopAnimating()
             let aspect = ImageLoader.shared.knownAspect(page.url) ?? hit.size.height / max(hit.size.width, 1)
-            // Sizes the cell if it was laid out before the image's shape was known.
-            DispatchQueue.main.async { learned(aspect) }
+            // Sizes the cell if it was laid out before the image's shape was known
+            // (applied after this cell is handed back, together with any others).
+            learned(aspect)
             return
         }
         spinner.startAnimating()
