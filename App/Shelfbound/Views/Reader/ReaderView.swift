@@ -386,7 +386,7 @@ struct TextReaderScreen: View {
         let chapter = context.chapter(chapterID)
         return ReaderTopBar(
             title: context.record?.title ?? "",
-            subtitle: "Chapter \(context.index(of: chapterID) + 1) · \(chapter?.title ?? "")",
+            subtitle: ChapterLabel.subtitle(number: context.index(of: chapterID) + 1, title: chapter?.title),
             close: { dismiss() }
         ) {
             Button { showingChapters = true } label: { Image(systemName: "list.bullet").frame(width: 40, height: 40) }
@@ -417,13 +417,13 @@ struct TextReaderScreen: View {
             Slider(value: Binding(get: { progress }, set: { progress = $0; seek = $0 }), in: 0...1)
                 .accessibilityLabel("Position in chapter")
             HStack {
-                Button { go(-1) } label: { Label("Ch. \(index)", systemImage: "chevron.left") }
+                Button { go(-1) } label: { Label { Text(verbatim: "Ch. \(index)") } icon: { Image(systemName: "chevron.left") } }
                     .disabled(index == 0)
                 Spacer()
-                Text("\(index + 1) of \(count)").font(.caption).foregroundStyle(.secondary)
+                Text(verbatim: "\(index + 1) of \(count)").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button { go(1) } label: {
-                    HStack(spacing: 4) { Text("Ch. \(index + 2)"); Image(systemName: "chevron.right") }
+                    HStack(spacing: 4) { Text(verbatim: "Ch. \(index + 2)"); Image(systemName: "chevron.right") }
                 }
                 .disabled(index >= count - 1)
             }
@@ -548,7 +548,7 @@ struct PagedReaderScreen: View {
     private var topBar: some View {
         ReaderTopBar(
             title: context.record?.title ?? "",
-            subtitle: "Chapter \(context.index(of: chapterID) + 1) · \(context.chapter(chapterID)?.title ?? "")",
+            subtitle: ChapterLabel.subtitle(number: context.index(of: chapterID) + 1, title: context.chapter(chapterID)?.title),
             close: { dismiss() }
         ) {
             Button {
@@ -692,7 +692,7 @@ struct VerticalReaderScreen: View {
         @Bindable var model = model
         return ReaderTopBar(
             title: context.record?.title ?? "",
-            subtitle: "Chapter \(context.index(of: chapterID) + 1) · \(context.chapter(chapterID)?.title ?? "")",
+            subtitle: ChapterLabel.subtitle(number: context.index(of: chapterID) + 1, title: context.chapter(chapterID)?.title),
             close: { dismiss() }
         ) {
             Button { showingChapters = true } label: { Image(systemName: "list.bullet").frame(width: 40, height: 40) }
@@ -780,7 +780,8 @@ struct ChapterListSheet: View {
                                 dismiss()
                             } label: {
                                 HStack {
-                                    Text("\(index + 1)").monospacedDigit().foregroundStyle(.secondary).frame(width: 36, alignment: .trailing)
+                                    Text(verbatim: String(index + 1)).monospacedDigit().foregroundStyle(.secondary)
+                                        .lineLimit(1).fixedSize().frame(minWidth: 36, alignment: .trailing)
                                     Text(chapter.title).foregroundStyle(record.isRead(chapter.id) ? Color.secondary : Color.primary)
                                     Spacer()
                                     if chapter.id == current { Image(systemName: "bookmark.fill").foregroundStyle(Color.shelfAccent) }
@@ -881,5 +882,26 @@ struct ReaderStyleSheet: View {
             .navigationTitle("Text & theme")
             .navigationBarTitleDisplayMode(.inline)
         }
+    }
+}
+
+/// The reader header's "Chapter N · Title" line, leaving out a title that only
+/// repeats the number ("Chapter 1075", "Ch. 1075", "1075") or is empty.
+enum ChapterLabel {
+    static func subtitle(number: Int, title: String?) -> String {
+        let label = "Chapter \(number)"
+        guard let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty,
+              !repeatsNumber(title, number) else { return label }
+        return "\(label) · \(title)"
+    }
+
+    static func repeatsNumber(_ title: String, _ number: Int) -> Bool {
+        var rest = Substring(title.lowercased())
+        for prefix in ["chapter", "chap.", "chap", "ch."] where rest.hasPrefix(prefix) {
+            rest = rest.dropFirst(prefix.count)
+            break
+        }
+        let digits = rest.trimmingCharacters(in: .whitespaces.union(CharacterSet(charactersIn: "#:.")))
+        return Int(digits) == number
     }
 }
