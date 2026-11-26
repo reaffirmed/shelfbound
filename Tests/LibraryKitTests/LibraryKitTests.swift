@@ -50,6 +50,46 @@ final class LibraryKitTests: XCTestCase {
         XCTAssertEqual(state.newChapterCount, 1)
     }
 
+    func testEmptyOrMuchShorterChapterListKeepsTheSavedOne() {
+        var r = makeRecord("tide", format: .manhwa)
+        r.chapters = chapters(30)
+        XCTAssertEqual(UpdateChecker.apply([], to: &r), [])
+        XCTAssertEqual(r.chapters.count, 30)
+        XCTAssertEqual(UpdateChecker.apply(Array(chapters(30).suffix(5)), to: &r), [])
+        XCTAssertEqual(r.chapters.count, 30)
+        XCTAssertEqual(r.unreadNewCount, 0)
+        // A normal update still goes through.
+        XCTAssertEqual(UpdateChecker.apply(chapters(31), to: &r).map(\.id), ["c31"])
+    }
+
+    func testRefilledListOnlyBadgesChaptersAfterTheNewestKnown() {
+        var r = makeRecord("strip", format: .manhwa)
+        // Saved while the site showed only its latest chapters.
+        r.chapters = Array(chapters(300).suffix(20))
+        let new = UpdateChecker.apply(chapters(301), to: &r)
+        XCTAssertEqual(new.map(\.id), ["c301"])
+        XCTAssertEqual(r.chapters.count, 301)
+        XCTAssertEqual(r.unreadNewCount, 1)
+    }
+
+    func testAFewChaptersSlottedInEarlierStillCountAsNew() {
+        var r = makeRecord("extras", format: .manga)
+        r.chapters = chapters(10)
+        var fetched = chapters(10)
+        fetched.insert(Chapter(id: "c5.5", title: "Chapter 5.5", number: 5.5), at: 5)
+        XCTAssertEqual(UpdateChecker.apply(fetched, to: &r).map(\.id), ["c5.5"])
+    }
+
+    func testUpdateCheckReportsAnEmptyListAsAFailure() async {
+        var a = makeRecord("a", format: .manga)
+        a.chapters = chapters(4)
+        let state = LibraryState(records: [a.id: a])
+        let (next, report) = await UpdateChecker.check(state) { _ in [] }
+        XCTAssertEqual(next[a.key]?.chapters.count, 4)
+        XCTAssertNotNil(report.failures[a.key])
+        XCTAssertTrue(report.found.isEmpty)
+    }
+
     func testContinueChapterMovesOnWhenFinished() {
         var r = makeRecord("a", format: .manga)
         r.chapters = chapters(4)

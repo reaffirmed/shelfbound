@@ -90,6 +90,7 @@ final class AppModel {
         static let repos = "repos"
         static let settings = "settings"
         static let accounts = "accounts"
+        static let signedOutAccounts = "accounts.signedOut"
     }
 
     private init() {
@@ -292,8 +293,14 @@ final class AppModel {
             return nil
         }
         AccountKeychain.save(accountJars.cookies(for: sourceID), for: sourceID)
+        // Signing back in to the same account brings back its sync choices.
+        var signedOut = Self.load([String: SavedAccount].self, Keys.signedOutAccounts, from: defaults) ?? [:]
+        let previous = accounts[sourceID] ?? signedOut[sourceID].flatMap { $0.username == account.username ? $0 : nil }
         accounts[sourceID] = SavedAccount(
-            username: account.username, signedInAt: Date(), syncedLists: accounts[sourceID]?.syncedLists ?? [])
+            username: account.username, signedInAt: Date(), syncedLists: previous?.syncedLists ?? [],
+            skippedWorks: previous?.skippedWorks)
+        signedOut[sourceID] = nil
+        save(signedOut, as: Keys.signedOutAccounts)
         save(accounts, as: Keys.accounts)
         restartRuntime(sourceID)
         return account
@@ -328,9 +335,28 @@ final class AppModel {
     private func forgetAccount(_ sourceID: String) {
         accountJars.set([], for: sourceID)
         AccountKeychain.delete(for: sourceID)
+        // Keep which lists were synced, so signing in again doesn't mean setting it all up again.
+        if let account = accounts[sourceID] {
+            var signedOut = Self.load([String: SavedAccount].self, Keys.signedOutAccounts, from: defaults) ?? [:]
+            signedOut[sourceID] = account
+            save(signedOut, as: Keys.signedOutAccounts)
+        }
         accounts[sourceID] = nil
         save(accounts, as: Keys.accounts)
         restartRuntime(sourceID)
+    }
+
+    /// Remembers a work the person removed, so "Keep in sync" leaves it out. Adding it back
+    /// by hand clears that.
+    private func setSkippedBySync(_ key: WorkKey, _ skipped: Bool) {
+        guard var account = accounts[key.sourceID] else { return }
+        var works = account.skippedWorks ?? []
+        let had = works.contains(key.workID)
+        guard had != skipped else { return }
+        if skipped { works.append(key.workID) } else { works.removeAll { $0 == key.workID } }
+        account.skippedWorks = works
+        accounts[key.sourceID] = account
+        save(accounts, as: Keys.accounts)
     }
 
     func setSynced(_ listID: String, _ on: Bool, for sourceID: String) {
@@ -364,6 +390,8 @@ final class AppModel {
         ensureRecord(key, summary: summary)
         library.setInLibrary(key, true)
         library.update(key) { $0.addedAt = $0.addedAt ?? addedAt }
+        // An Import brings back a work the person had removed; sync can keep it from then on.
+        setSkippedBySync(key, false)
         scheduleSave()
         return true
     }
@@ -378,7 +406,8 @@ final class AppModel {
                 for page in 1...max(1, pages) {
                     guard let result = try? await accountList(sourceID: sourceID, listID: listID, page: page) else { break }
                     var fresh = 0
-                    for work in result.results {
+                    let skipped = Set(account.skippedWorks ?? [])
+                    for work in result.results where !skipped.contains(work.id) {
                         let key = WorkKey(sourceID: sourceID, workID: work.id)
                         if addToLibrary(key, summary: work) { added.append(key); fresh += 1 }
                     }
@@ -477,6 +506,7 @@ final class AppModel {
     func toggleLibrary(_ key: WorkKey) {
         guard let record = library[key] else { return }
         library.setInLibrary(key, !record.inLibrary)
+        setSkippedBySync(key, record.inLibrary)
         if !record.inLibrary { Notifications.requestPermissionIfNeeded() }
         scheduleSave()
         refreshBadge()

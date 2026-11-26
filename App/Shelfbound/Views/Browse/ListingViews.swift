@@ -81,7 +81,8 @@ struct ListingSection: View {
         if let shown, !shown.results.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 12) {
-                    ForEach(shown.results) { work in
+                    // Sites repeat works within a page; a repeated ID drops rows or crashes the list.
+                    ForEach(shown.results.uniqued()) { work in
                         NavigationLink(value: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work)) {
                             ListingTile(work: work, format: work.format ?? source.manifest.defaultFormat)
                         }
@@ -223,7 +224,7 @@ struct ListingView: View {
                 results = result.results.uniqued()
             } else {
                 let seen = Set(results.map(\.id))
-                results += result.results.filter { !seen.contains($0.id) }
+                results += result.results.uniqued().filter { !seen.contains($0.id) }
             }
             page = next
             hasMore = result.hasMore && !result.results.isEmpty
