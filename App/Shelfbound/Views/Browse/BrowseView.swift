@@ -824,19 +824,88 @@ struct InitialsTile: View {
 struct GenreGrid: View {
     let filter: SearchFilter
     @Binding var values: [String: [String]]
+    @State private var typed = ""
 
     private var included: [String] { values[filter.id] ?? [] }
     private var excluded: [String] { values[filter.excludeKey] ?? [] }
 
+    private var query: String { typed.trimmingCharacters(in: .whitespaces) }
+
+    /// The site's genres, plus any typed ones already picked, narrowed by what's typed.
+    /// Picked ones always stay, so they can be tapped off.
+    private var shown: [SearchFilter.Option] {
+        let options = filter.options ?? []
+        let extra = (included + excluded)
+            .filter { id in !options.contains { $0.id == id } }
+            .map { SearchFilter.Option(id: $0, label: $0) }
+        let all = options + extra
+        guard !query.isEmpty else { return all }
+        return all.filter { included.contains($0.id) || excluded.contains($0.id) || GenreMatch.matches(query, $0.label) }
+    }
+
+    /// Typed text that names no listed genre can still be sent, where the source takes names.
+    private var canAddTyped: Bool {
+        filter.type == .tags && !query.isEmpty
+            && !(filter.options ?? []).contains { GenreMatch.fold($0.label) == GenreMatch.fold(query) }
+            && !included.contains(query)
+    }
+
     var body: some View {
-        FlowLayout(spacing: 8) {
-            ForEach(filter.options ?? []) { option in
-                Button { cycle(option.id) } label: { chip(option) }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Find a \(filter.label.lowercased().hasSuffix("s") ? String(filter.label.lowercased().dropLast()) : filter.label.lowercased())", text: $typed)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .submitLabel(.done)
+                    .onSubmit(pickBest)
+                if !typed.isEmpty {
+                    Button { typed = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Clear")
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(.tertiarySystemFill)))
+            .accessibilityIdentifier("genre.find")
+
+            FlowLayout(spacing: 8) {
+                ForEach(shown) { option in
+                    Button { cycle(option.id) } label: { chip(option) }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("genre.chip")
+                }
+                if canAddTyped {
+                    Button { add(query) } label: {
+                        FilterChipLabel(text: "Add “\(query)”", on: false, systemImage: "plus")
+                    }
                     .buttonStyle(.plain)
-                    .accessibilityIdentifier("genre.chip")
+                }
+            }
+            if shown.isEmpty && !canAddTyped {
+                Text("No genre like “\(query)”.").font(.footnote).foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 6)
+    }
+
+    /// Return in the field picks the closest genre, or adds the typed name.
+    private func pickBest() {
+        guard !query.isEmpty else { return }
+        let options = filter.options ?? []
+        if let best = options.first(where: { GenreMatch.fold($0.label) == GenreMatch.fold(query) })
+            ?? options.first(where: { GenreMatch.matches(query, $0.label) }) {
+            if !included.contains(best.id) { values[filter.id] = included + [best.id] }
+        } else if canAddTyped {
+            add(query)
+            return
+        }
+        typed = ""
+    }
+
+    private func add(_ name: String) {
+        values[filter.id] = included + [name]
+        typed = ""
     }
 
     private func chip(_ option: SearchFilter.Option) -> some View {
@@ -878,5 +947,42 @@ extension Array where Element == WorkSummary {
     func uniqued() -> [WorkSummary] {
         var seen = Set<String>()
         return filter { seen.insert($0.id).inserted }
+    }
+}
+
+/// Forgiving genre matching for the find field: case and accents don't matter, any part
+/// of a name matches, and a letter or two off still finds it ("haram" finds Harem).
+enum GenreMatch {
+    static func fold(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .filter { $0.isLetter || $0.isNumber }
+    }
+
+    static func matches(_ query: String, _ name: String) -> Bool {
+        let q = fold(query), n = fold(name)
+        guard !q.isEmpty else { return true }
+        if n.contains(q) { return true }
+        let allowed = q.count >= 7 ? 2 : q.count >= 4 ? 1 : 0
+        guard allowed > 0 else { return false }
+        // Against the whole name and against its start, so a typo in a short prefix counts.
+        return distance(q, n) <= allowed || distance(q, String(n.prefix(q.count))) <= allowed
+    }
+
+    /// Edit distance between two short strings.
+    static func distance(_ a: String, _ b: String) -> Int {
+        let a = Array(a), b = Array(b)
+        if a.isEmpty { return b.count }
+        if b.isEmpty { return a.count }
+        var row = Array(0...b.count)
+        for i in 1...a.count {
+            var previous = row[0]
+            row[0] = i
+            for j in 1...b.count {
+                let current = row[j]
+                row[j] = min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] == b[j - 1] ? 0 : 1))
+                previous = current
+            }
+        }
+        return row[b.count]
     }
 }
