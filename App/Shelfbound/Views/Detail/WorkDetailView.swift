@@ -592,10 +592,11 @@ struct ChapterRow: View {
     var body: some View {
         Button(action: open) {
             HStack(spacing: 12) {
-                Text("\(number)")
+                Text(verbatim: String(number))
                     .font(.subheadline.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 32, alignment: .trailing)
+                    .lineLimit(1).fixedSize()
+                    .frame(minWidth: 32, alignment: .trailing)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(chapter.title).lineLimit(2)
                         .foregroundStyle(record.isRead(chapter.id) ? Color.secondary : Color.primary)
