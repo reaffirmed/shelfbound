@@ -51,7 +51,7 @@ enum BackgroundWork {
                 Notifications.post(report, downloading: model.settings.downloads.autoDownload)
             }
             if !model.downloads.jobs.isEmpty { scheduleCatchUp() }
-            model.saveNow()
+            model.saveNow(wait: true)
             task.setTaskCompleted(success: report.failures.count < max(report.checked, 1))
         }
         task.expirationHandler = { work.cancel() }
@@ -71,7 +71,7 @@ enum BackgroundWork {
                 if !busy || Task.isCancelled { break }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
-            model.saveNow()
+            model.saveNow(wait: true)
             task.setTaskCompleted(success: true)
         }
         task.expirationHandler = { work.cancel() }

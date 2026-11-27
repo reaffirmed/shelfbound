@@ -26,6 +26,8 @@ struct BrowseView: View {
     /// The first lists from each source that has them, for the Discover rows.
     @State private var discover: [DiscoverItem] = []
     @State private var discoverToken = 0
+    /// Sources still being asked for their lists, so Discover shows rows on the way.
+    @State private var discoverLoading = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -42,6 +44,7 @@ struct BrowseView: View {
                             sourceHeading: index == 0 || discover[index - 1].source.id != item.source.id,
                             refreshToken: discoverToken)
                     }
+                    if discoverLoading { DiscoverPlaceholder() }
                     sources
                     repositories
                 }
@@ -84,15 +87,36 @@ struct BrowseView: View {
     }
 
     /// Two lists from each source that has them, in the order the sources are listed.
+    /// Sources are asked side by side and each one's rows show as soon as it answers, so a
+    /// slow source doesn't hold up the others.
     private func loadDiscover() async {
-        var items: [DiscoverItem] = []
-        for source in model.searchableSources where source.manifest.has(.listings) {
-            guard let runtime = try? model.runtime(for: source.id),
-                  let listings = try? await runtime.getListings() else { continue }
-            items += listings.prefix(2).map { DiscoverItem(source: source, listing: $0) }
+        let sources = model.searchableSources.filter { $0.manifest.has(.listings) }
+        // Rows for sources that are gone leave right away; the rest stay until refreshed.
+        discover.removeAll { item in !sources.contains { $0.id == item.source.id } }
+        guard !sources.isEmpty else { return }
+        discoverLoading = true
+        await withTaskGroup(of: (String, [SourceListing]?).self) { group in
+            var found: [String: [SourceListing]] = [:]
+            for source in sources {
+                guard let runtime = try? model.runtime(for: source.id) else { continue }
+                group.addTask { (source.id, try? await runtime.getListings()) }
+            }
+            for await (id, listings) in group {
+                guard !Task.isCancelled else { continue }
+                guard let listings else { continue }
+                found[id] = listings
+                // Sources that haven't answered yet keep the rows they already had.
+                let kept = Dictionary(grouping: discover, by: { $0.source.id })
+                discover = sources.flatMap { source -> [DiscoverItem] in
+                    if let lists = found[source.id] {
+                        return lists.prefix(2).map { DiscoverItem(source: source, listing: $0) }
+                    }
+                    return kept[source.id] ?? []
+                }
+            }
         }
         guard !Task.isCancelled else { return }
-        discover = items
+        discoverLoading = false
     }
 
     @ViewBuilder
@@ -391,6 +415,26 @@ struct WorkCard: View {
     }
 }
 
+/// Stand-in rows while the sources answer, so what's below doesn't jump when they arrive.
+@MainActor
+struct DiscoverPlaceholder: View {
+    var body: some View {
+        Section {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(0..<5, id: \.self) { _ in ListingTile.placeholder }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 4)
+            }
+            .scrollDisabled(true)
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+            .accessibilityLabel("Loading lists")
+        }
+    }
+}
+
 struct DiscoverItem: Identifiable {
     let source: InstalledSource
     let listing: SourceListing
@@ -490,6 +534,8 @@ struct SourceSearchView: View {
     @State private var pagedValues: [String: [String]]?
     /// Pages in a row that brought only works already shown.
     @State private var repeatPages = 0
+    /// A new search (not a next page) failed while older results are still on screen.
+    @State private var firstPageFailed = false
 
     /// Search results as covers get a scroll view of their own instead of the List (see
     /// PagedCoverGrid). The genre grid, browse lists and list layout stay in the List.
@@ -512,7 +558,9 @@ struct SourceSearchView: View {
                     failed: error != nil,
                     loadMore: { loadNextPage(retry: $0) },
                     open: { opened = $0 }
-                )
+                ) {
+                    if firstPageFailed { searchFailedBanner.padding(.horizontal, 16).padding(.top, 8) }
+                }
                 .opacity(reloading ? 0.35 : 1)
                 .allowsHitTesting(!reloading)
             } else {
@@ -570,6 +618,7 @@ struct SourceSearchView: View {
                 results = []
                 searchedText = nil
                 error = nil
+                firstPageFailed = false
                 hasMore = false
                 loading = false
             }
@@ -590,7 +639,7 @@ struct SourceSearchView: View {
         .task { await setUp() }
         .browserVerification($verifying)
         .onChange(of: model.verifiedCount) { _, _ in
-            if error != nil, !query.isEmpty { Task { await run(page: 1) } }
+            if error != nil, !query.isEmpty || firstPageFailed { Task { await run(page: 1) } }
         }
     }
 
@@ -613,7 +662,11 @@ struct SourceSearchView: View {
                     ListingSection(source: source, listing: listing)
                 }
             } else {
-                if let error, results.isEmpty || !hasMore { Text(error).foregroundStyle(Color.shelfWarning) }
+                if firstPageFailed && !results.isEmpty {
+                    searchFailedBanner
+                } else if let error, results.isEmpty || !hasMore {
+                    Text(error).foregroundStyle(Color.shelfWarning)
+                }
                 // No modifiers on a Group of rows here: SwiftUI copies them onto every row,
                 // and an .id() there once gave every row the same identity, which made the
                 // list leave big gaps and jump when a page was added.
@@ -632,6 +685,17 @@ struct SourceSearchView: View {
         }
         .opacity(reloading ? 0.35 : 1)
         .allowsHitTesting(!reloading)
+    }
+
+    /// A new search failed and the results below are from the one before it.
+    private var searchFailedBanner: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(error ?? "Search failed").foregroundStyle(Color.shelfWarning)
+            Text("These results are from your last search.").font(.footnote).foregroundStyle(.secondary)
+            Button("Try again") { Task { await run(page: 1) } }
+                .buttonStyle(.borderless)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// The chips sit under the search field and stay put while results scroll.
@@ -721,16 +785,23 @@ struct SourceSearchView: View {
             repeatPages = fresh.isEmpty && page > 1 ? repeatPages + 1 : 0
             hasMore = result.hasMore && repeatPages < 3
             error = nil
+            firstPageFailed = false
         } catch {
             guard mine == generation else { return }
             // A cancelled request isn't a failure to show; the next scroll asks again.
             if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
             self.error = error.readable
+            firstPageFailed = page == 1
             if let request = error.verification { verifying = request }
         }
     }
 
     private func loadNextPage(retry: Bool) {
+        // After a failed new search, "Try again" means that search, not more of the old one.
+        if firstPageFailed {
+            if retry, !loading { Task { await run(page: 1) } }
+            return
+        }
         guard hasMore, !loading, retry || error == nil else { return }
         if retry { error = nil }
         let next = page + 1

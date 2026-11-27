@@ -200,7 +200,7 @@ public actor URLSessionNetwork: HostNetwork {
         // A signed-in source's requests stay with its own cookie jar, never the browser's.
         let canUseBrowser = browserFetch != nil && options.followRedirects && accounts?.hasJar(for: sourceID) != true
         if canUseBrowser, let host = request.url?.host?.lowercased(), browserHosts.contains(host),
-           let response = try await fetchInBrowser(request) {
+           let response = try await fetchInBrowser(request, sourceID: sourceID, options: options) {
             return response
         }
 
@@ -223,11 +223,15 @@ public actor URLSessionNetwork: HostNetwork {
         // the browser check's clearance cookie.
         let cookieStore = accountSession.flatMap { accounts?.storage(for: $0) }
             ?? session.configuration.httpCookieStorage ?? .shared
+        let ownCookies = request.value(forHTTPHeaderField: "Cookie")
         let manualCookies = request.includeStoredCookies(from: cookieStore)
         #if canImport(FoundationNetworking)
         let (data, response) = try await session.data(for: request)
         #else
-        let (data, response) = try await session.data(for: request, delegate: RedirectGuard(options: options))
+        let redirects = RedirectGuard(
+            options: options, cookieStore: manualCookies ? cookieStore : nil,
+            ownCookies: ownCookies, ownHost: request.url?.host?.lowercased())
+        let (data, response) = try await session.data(for: request, delegate: redirects)
         #endif
         if manualCookies { cookieStore.keepCookies(from: response) }
         if let accountSession { accounts?.noteResponse(for: sourceID, session: accountSession) }
@@ -245,7 +249,7 @@ public actor URLSessionNetwork: HostNetwork {
             // own requests (Cloudflare can tell them apart from the browser's). Ask from the
             // browser instead, and keep doing that for this host.
             if canUseBrowser, clearances?.userAgent(for: url) != nil, let host = url.host?.lowercased(),
-               let response = try await fetchInBrowser(request) {
+               let response = try await fetchInBrowser(request, sourceID: sourceID, options: options) {
                 browserHosts.insert(host)
                 return response
             }
@@ -261,13 +265,26 @@ public actor URLSessionNetwork: HostNetwork {
 
     /// The response from the browser, or nil when it couldn't send the request. Throws
     /// when the browser is shown the check too, so the person is asked to verify again.
-    private func fetchInBrowser(_ request: URLRequest) async throws -> HostResponse? {
+    ///
+    /// The browser follows redirects on its own, so the rules the app's own requests get
+    /// are applied to what comes back: a response that ended up on a host the source
+    /// didn't declare is refused, and "slow down" answers push the source's next request back.
+    private func fetchInBrowser(_ request: URLRequest, sourceID: String, options: FetchOptions) async throws -> HostResponse? {
         guard let browserFetch, let url = request.url else { return nil }
         guard let response = try? await browserFetch(request) else { return nil }
         var headers: [String: String] = [:]
         for (key, value) in response.headers { headers[key.lowercased()] = value }
         if BrowserChallenge.isChallenge(status: response.status, headers: headers, body: response.body) {
             throw BrowserVerificationNeeded(url: url)
+        }
+        if let landed = URL(string: response.url), landed.host?.lowercased() != url.host?.lowercased(),
+           !options.allowRedirect(landed) {
+            throw URLError(.redirectToNonExistentLocation, userInfo: [
+                NSLocalizedDescriptionKey: "\(url.host ?? "The site") sent this request to \(landed.host ?? "another site"), which this source doesn't read.",
+            ])
+        }
+        if response.status == 429 || response.status == 503 {
+            backOff(sourceID, retryAfter: headers["retry-after"])
         }
         return HostResponse(status: response.status, url: response.url, headers: headers, body: response.body)
     }
@@ -288,17 +305,40 @@ public actor URLSessionNetwork: HostNetwork {
 
 #if !canImport(FoundationNetworking)
 /// Stops redirects to undeclared hosts, or all redirects for `redirect: "manual"`.
-private final class RedirectGuard: NSObject, URLSessionTaskDelegate, Sendable {
+///
+/// A request that set its own `Cookie` header has URLSession's cookie handling turned
+/// off, so this also does that work at each redirect: it keeps the cookies the
+/// redirecting response set (a sign-in often sets its session cookie there) and builds
+/// the next request's header for the address it's going to.
+private final class RedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     let options: FetchOptions
+    /// The store to keep and read cookies with, when the request manages its own header.
+    let cookieStore: HTTPCookieStorage?
+    /// The header the source itself set, which only goes back to the host it was for.
+    let ownCookies: String?
+    let ownHost: String?
 
-    init(options: FetchOptions) { self.options = options }
+    init(options: FetchOptions, cookieStore: HTTPCookieStorage? = nil, ownCookies: String? = nil, ownHost: String? = nil) {
+        self.options = options
+        self.cookieStore = cookieStore
+        self.ownCookies = ownCookies
+        self.ownHost = ownHost
+    }
 
     func urlSession(
         _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
         newRequest request: URLRequest
     ) async -> URLRequest? {
         guard options.followRedirects, let url = request.url, options.allowRedirect(url) else { return nil }
-        return request
+        guard let cookieStore else { return request }
+        cookieStore.keepCookies(from: response)
+        var next = request
+        let stored = (cookieStore.cookies(for: url) ?? []).map { (name: $0.name, value: $0.value) }
+        let own = url.host?.lowercased() == ownHost ? (ownCookies ?? "") : ""
+        let header = CookieHeader.merge(own, stored: stored)
+        next.setValue(header.isEmpty ? nil : header, forHTTPHeaderField: "Cookie")
+        next.httpShouldHandleCookies = false
+        return next
     }
 }
 #endif

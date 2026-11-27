@@ -23,8 +23,26 @@ struct LibraryView: View {
     @State private var reading: ReaderRequest?
     @State private var choosingFiles = false
     @State private var deleting: WorkRecord?
+    @State private var query = ""
+    @State private var show: LibraryShow = .everything
 
     private let columns = [GridItem(.adaptive(minimum: 100, maximum: 160), spacing: 14, alignment: .top)]
+
+    /// The library narrowed by the search field and the "Show" choice.
+    private var shelf: [WorkRecord] {
+        let text = query.trimmingCharacters(in: .whitespaces).lowercased()
+        return model.library.library.filter { record in
+            switch show {
+            case .everything: break
+            case .unread: if record.readChapterIDs.count >= record.readingOrder.count { return false }
+            case .downloaded: if model.downloads.chapters(of: record.key).isEmpty { return false }
+            }
+            guard !text.isEmpty else { return true }
+            return record.title.lowercased().contains(text)
+                || record.authors.contains { $0.lowercased().contains(text) }
+                || LibraryLayout.fandom(of: record).lowercased().contains(text)
+        }
+    }
 
     var body: some View {
         @Bindable var model = model
@@ -33,6 +51,17 @@ struct LibraryView: View {
                 FileImportBanner()
                 if model.library.library.isEmpty {
                     emptyState
+                } else if shelf.isEmpty {
+                    if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                        ContentUnavailableView {
+                            Label("Nothing \(show.label.lowercased()) here", systemImage: "line.3.horizontal.decrease.circle")
+                        } actions: {
+                            Button("Show everything") { show = .everything }
+                        }
+                        .padding(.top, 80)
+                    } else {
+                        ContentUnavailableView.search(text: query).padding(.top, 80)
+                    }
                 } else {
                     VStack(alignment: .leading, spacing: 0) {
                         Picker("Show", selection: $filter) {
@@ -50,6 +79,7 @@ struct LibraryView: View {
                 }
             }
             .navigationTitle("Library")
+            .searchable(text: $query, prompt: "Search library")
             .toolbar { toolbar }
             .refreshable { await model.checkForUpdates() }
             .navigationDestination(for: WorkRoute.self) { WorkDetailView(route: $0) }
@@ -94,7 +124,7 @@ struct LibraryView: View {
 
     @ViewBuilder
     private var continueRail: some View {
-        let items = LibraryLayout.continueReading(model.library.library, filter: filter)
+        let items = LibraryLayout.continueReading(shelf, filter: filter)
         if !items.isEmpty {
             SectionHeader(title: "Continue reading")
             ScrollView(.horizontal, showsIndicators: false) {
@@ -146,7 +176,7 @@ struct LibraryView: View {
     @ViewBuilder
     private var sections: some View {
         let sections = LibraryLayout.sections(
-            model.library.library, filter: filter, grouping: model.settings.grouping, sort: model.settings.sort,
+            shelf, filter: filter, grouping: model.settings.grouping, sort: model.settings.sort,
             sourceName: { model.sourceName($0) })
         ForEach(sections) { section in
             SectionHeader(title: section.title, subtitle: section.subtitle, mark: model.settings.grouping == .fandom ? section.title : nil) {
@@ -170,35 +200,52 @@ struct LibraryView: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         @Bindable var model = model
+        // One menu instead of three buttons: pulling down already checks for new chapters,
+        // and importing is an occasional job.
         ToolbarItemGroup(placement: .primaryAction) {
-            Button { choosingFiles = true } label: {
-                Image(systemName: "doc.badge.plus")
+            if model.isCheckingUpdates {
+                ProgressView().accessibilityLabel("Checking for new chapters")
             }
-            .accessibilityLabel("Import files")
-
             Menu {
+                Picker("Show", selection: $show) {
+                    ForEach(LibraryShow.allCases) { Text($0.label).tag($0) }
+                }
                 Picker("Group by", selection: $model.settings.grouping) {
                     ForEach(LibraryGrouping.allCases) { Text($0.label).tag($0) }
                 }
                 Picker("Sort by", selection: $model.settings.sort) {
                     ForEach(LibrarySort.allCases) { Text($0.label).tag($0) }
                 }
-            } label: {
-                Image(systemName: "line.3.horizontal.decrease.circle")
-            }
-            .accessibilityLabel("Sort and group")
-
-            Button {
-                Task { await model.checkForUpdates() }
-            } label: {
-                if model.isCheckingUpdates {
-                    ProgressView()
-                } else {
-                    Image(systemName: "arrow.clockwise")
+                Section {
+                    Button {
+                        Task { await model.checkForUpdates() }
+                    } label: {
+                        Label("Check for new chapters", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(model.isCheckingUpdates)
+                    Button { choosingFiles = true } label: {
+                        Label("Import files", systemImage: "doc.badge.plus")
+                    }
                 }
+            } label: {
+                Image(systemName: show == .everything ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
             }
-            .disabled(model.isCheckingUpdates)
-            .accessibilityLabel("Check for new chapters")
+            .accessibilityLabel("Show, sort and more")
+        }
+    }
+}
+
+/// Which works the library shows, from its menu.
+enum LibraryShow: String, CaseIterable, Identifiable {
+    case everything, unread, downloaded
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .everything: "Everything"
+        case .unread: "Unread"
+        case .downloaded: "Downloaded"
         }
     }
 }
@@ -265,7 +312,7 @@ struct LibraryTile: View {
                 }
             } else {
                 Button(role: .destructive) { model.toggleLibrary(record.key) } label: {
-                    Label("Remove from library", systemImage: "heart.slash")
+                    Label("Remove from library", systemImage: "minus.circle")
                 }
             }
         }
@@ -320,6 +367,7 @@ struct ContinueCard: View {
 struct SectionView: View {
     @Environment(AppModel.self) private var model
     let route: LibrarySectionRoute
+    @State private var deleting: WorkRecord?
     private let columns = [GridItem(.adaptive(minimum: 100, maximum: 160), spacing: 14, alignment: .top)]
 
     var body: some View {
@@ -331,13 +379,14 @@ struct SectionView: View {
             LazyVGrid(columns: columns, spacing: 18) {
                 ForEach(section?.records ?? []) { record in
                     NavigationLink(value: WorkRoute(key: record.key, summary: record.summary)) {
-                        LibraryTile(record: record)
+                        LibraryTile(record: record, delete: { deleting = record })
                     }
                     .buttonStyle(.plain)
                 }
             }
             .padding()
         }
+        .modifier(DeleteLocalFileDialog(record: $deleting))
         .navigationTitle(route.title)
         .navigationBarTitleDisplayMode(.inline)
     }

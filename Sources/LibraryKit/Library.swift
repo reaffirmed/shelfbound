@@ -40,6 +40,8 @@ public struct WorkSettings: Codable, Sendable, Hashable {
     public var translateFrom: String?
     /// Paged image chapters: zoom from panel to panel instead of showing whole pages.
     public var panelByPanel: Bool?
+    /// The work page's chapter list, newest chapter at the top. Nil is oldest first.
+    public var chaptersNewestFirst: Bool?
 
     public init(readingMode: ReadingMode? = nil, autoDownload: Bool? = nil, skipNotes: Bool = false, preferredGroup: String? = nil) {
         self.readingMode = readingMode

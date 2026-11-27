@@ -33,7 +33,7 @@ struct UnhandledLink: Error, LocalizedError {
 @Observable
 final class AppModel {
     static let shared = AppModel()
-    nonisolated static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.11"
+    nonisolated static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.12"
 
     private(set) var repos: [SavedRepo] = []
     private(set) var installed: [InstalledSource] = []
@@ -79,6 +79,13 @@ final class AppModel {
     @ObservationIgnored private let defaults = UserDefaults.standard
     @ObservationIgnored private let libraryFile: LibraryFile?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    /// Where each open reader is right now. Readers report their place several times a
+    /// second; putting each report straight into `library` redrew every screen that shows
+    /// the library, so they wait here and go in together (see `flushPositions`).
+    @ObservationIgnored private var livePositions: [WorkKey: ReadingPosition] = [:]
+    @ObservationIgnored private var lastPositionFlush = Date.distantPast
+    /// Writes the library file one save at a time, off the main thread.
+    @ObservationIgnored private let saveQueue = DispatchQueue(label: "app.shelfbound.library-save", qos: .utility)
     @ObservationIgnored private let resolverBox: ResolverBox
     @ObservationIgnored private let widgets = WidgetBridge()
     /// EPUB, PDF and CBZ files the person imported.
@@ -105,7 +112,12 @@ final class AppModel {
         let loadedSettings = Self.load(AppSettings.self, Keys.settings, from: .standard) ?? AppSettings()
         network = URLSessionNetwork(
             clearances: .shared, accounts: accountJars,
-            browserFetch: { try await BrowserFetcher.hostResponse(for: $0) })
+            browserFetch: { request in
+                // The browser shares its cookies with the sign-in page, so a site someone is
+                // signed in to never goes through it: that sign-in stays with its own source.
+                if let url = request.url, await AppModel.signedInSiteCovers(url) { return nil }
+                return try await BrowserFetcher.hostResponse(for: request)
+            })
         self.transfer = transfer
         self.networkMonitor = monitor
         self.resolverBox = box
@@ -276,6 +288,14 @@ final class AppModel {
     }
 
     func isSignedIn(_ sourceID: String) -> Bool { accounts[sourceID] != nil }
+
+    /// Whether `url` is on a site that a signed-in source reads.
+    static func signedInSiteCovers(_ url: URL) -> Bool {
+        let model = AppModel.shared
+        return model.accounts.keys.contains { sourceID in
+            model.manifest(for: sourceID).map { DomainPolicy(patterns: $0.domains).allows(url) } ?? false
+        }
+    }
 
     var signedInSourceIDs: [String] { Array(accounts.keys) }
 
@@ -519,12 +539,31 @@ final class AppModel {
         scheduleSave()
     }
 
+    /// Called by the readers as the person reads. The place is kept aside and reaches the
+    /// library when reading pauses (with the save that follows), or every few seconds
+    /// during a long unbroken scroll.
     func savePosition(_ position: ReadingPosition, for key: WorkKey) {
-        library.savePosition(position, for: key)
+        livePositions[key] = position
+        if Date().timeIntervalSince(lastPositionFlush) >= 5 { flushPositions() }
         scheduleSave()
     }
 
+    /// The work's place, counting what an open reader has reported since the last save.
+    func currentPosition(for key: WorkKey) -> ReadingPosition? {
+        livePositions[key] ?? library[key]?.position
+    }
+
+    /// Moves the readers' latest places into the library.
+    private func flushPositions() {
+        lastPositionFlush = Date()
+        guard !livePositions.isEmpty else { return }
+        let pending = livePositions
+        livePositions = [:]
+        for (key, position) in pending { library.savePosition(position, for: key) }
+    }
+
     func markRead(_ chapterID: String, in key: WorkKey, _ read: Bool = true) {
+        flushPositions()
         let changed = library.markRead(chapterID, in: key, read)
         scheduleSave()
         refreshBadge()
@@ -589,8 +628,14 @@ final class AppModel {
         if next.inLibrary { downloadAhead(next) }
     }
 
-    func removeFromHistory(_ key: WorkKey) {
-        library.update(key) { $0.lastReadAt = nil; $0.position = nil }
+    /// Takes a work out of History. `keepPlace` leaves its reading place alone, so a work
+    /// in the library still continues where it was.
+    func removeFromHistory(_ key: WorkKey, keepPlace: Bool = false) {
+        livePositions[key] = nil
+        library.update(key) {
+            $0.lastReadAt = nil
+            if !keepPlace { $0.position = nil }
+        }
         scheduleSave()
     }
 
@@ -740,7 +785,8 @@ final class AppModel {
     /// "Mark as Read" on a new-chapter alert.
     func markNewChaptersRead(_ chapterIDs: [String], in key: WorkKey) {
         for id in chapterIDs { library.markRead(id, in: key) }
-        saveNow()
+        // Often run from a notification with the app in the background, about to be suspended.
+        saveNow(wait: true)
         refreshBadge()
     }
 
@@ -766,6 +812,10 @@ final class AppModel {
 
     private func downloadsChanged(_ snapshot: DownloadSnapshot) {
         let newlyBlocked = Set(snapshot.blockedHosts).subtracting(downloads.blockedHosts)
+        // The last queued chapter just finished saving.
+        if snapshot.jobs.isEmpty, !downloads.jobs.isEmpty, UIApplication.shared.applicationState == .active {
+            Haptics.success()
+        }
         downloads = snapshot
         widgets.update(downloads: snapshot)
         if !newlyBlocked.isEmpty, UIApplication.shared.applicationState != .active {
@@ -916,13 +966,25 @@ final class AppModel {
         }
     }
 
-    func saveNow() {
+    /// Saves the library. The file is written off the main thread, so a big library
+    /// doesn't cause a hitch just as scrolling stops; `wait` holds on until it's written,
+    /// for when the app is about to be suspended.
+    func saveNow(wait: Bool = false) {
+        saveTask?.cancel()
+        flushPositions()
         var state = library
         // Works only browsed (not saved, never read, no glossary or highlights) aren't worth keeping.
         state.records = state.records.filter {
             $0.value.inLibrary || $0.value.lastReadAt != nil || !$0.value.glossary.isEmpty || !($0.value.highlights ?? []).isEmpty
         }
-        try? libraryFile?.save(state)
+        if let file = libraryFile {
+            let snapshot = state
+            if wait {
+                saveQueue.sync { try? file.save(snapshot) }
+            } else {
+                saveQueue.async { try? file.save(snapshot) }
+            }
+        }
         widgets.update(library: library, badge: settings.badgeNewChapters)
     }
 

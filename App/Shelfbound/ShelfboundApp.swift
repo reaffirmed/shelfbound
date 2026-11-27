@@ -65,7 +65,7 @@ struct ShelfboundApp: App {
                 model.checkOnOpenIfDue()
                 Task { await model.downloadManager.start() }
             case .background:
-                model.saveNow()
+                model.saveNow(wait: true)
                 BackgroundWork.scheduleRefresh(interval: model.settings.updateInterval)
                 if !model.downloads.jobs.isEmpty { BackgroundWork.scheduleCatchUp() }
             default:

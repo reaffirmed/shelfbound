@@ -93,7 +93,7 @@ struct ReaderContext {
     }
 
     func savedProgress(_ chapterID: String) -> (progress: Double, page: Int?) {
-        guard let position = record?.position, position.chapterID == chapterID else { return (0, nil) }
+        guard let position = model.currentPosition(for: key), position.chapterID == chapterID else { return (0, nil) }
         // Re-reading a finished chapter starts from the top.
         return position.progress >= 0.98 ? (0, nil) : (position.progress, position.page)
     }
@@ -185,7 +185,7 @@ struct ReaderTopBar<Trailing: View>: View {
     var body: some View {
         HStack(spacing: 8) {
             Button(action: close) {
-                Image(systemName: "chevron.down").font(.system(size: 18, weight: .semibold)).frame(width: 40, height: 40)
+                Image(systemName: "chevron.down").font(.system(size: 18, weight: .semibold)).frame(width: 44, height: 44)
             }
             .accessibilityLabel("Close reader")
             VStack(spacing: 1) {
@@ -225,8 +225,15 @@ struct TextReaderScreen: View {
     @State private var translated: [String]?
     @State private var translationState: TranslationState = .idle
     @State private var showOriginal = false
+    @State private var barsTouched = false
+    @State private var htmlCache = ReaderHTMLCache()
 
     private var context: ReaderContext { ReaderContext(model: model, key: key) }
+
+    private var isLoaded: Bool {
+        if case .loaded = phase { return true }
+        return false
+    }
 
     var body: some View {
         let style = model.readerStyle(for: key)
@@ -245,7 +252,10 @@ struct TextReaderScreen: View {
                         progress = value
                         context.save(chapterID, progress: value)
                     },
-                    onTap: { withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() } },
+                    onTap: {
+                        barsTouched = true
+                        withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
+                    },
                     onGlossaryTerm: { index in
                         if let entries = context.record?.glossary, entries.indices.contains(index) { glossaryEntry = entries[index] }
                     },
@@ -273,6 +283,7 @@ struct TextReaderScreen: View {
         .overlay(alignment: .bottom) { if chrome { bottomBar.transition(.move(edge: .bottom).combined(with: .opacity)) } }
         .environment(\.colorScheme, style.theme.isDark ? .dark : .light)
         .statusBarHidden(!chrome)
+        .modifier(AutoHideBars(chrome: $chrome, touched: $barsTouched, ready: isLoaded))
         .task(id: chapterID) { await load() }
         .sheet(isPresented: $showingStyle) {
             ReaderStyleSheet(key: key).presentationDetents([.medium, .large])
@@ -330,7 +341,18 @@ struct TextReaderScreen: View {
         }
     }
 
+    /// The chapter's page, built once and kept until the chapter or its look changes.
     private func html(for content: ChapterContent) -> String {
+        let next = context.neighbour(of: chapterID, 1)
+        let cacheKey = ReaderHTMLCache.Key(
+            chapterID: chapterID, content: content, style: model.readerStyle(for: key),
+            skipNotes: context.record?.settings.skipNotes ?? false,
+            title: context.chapter(chapterID)?.title ?? "", index: context.index(of: chapterID),
+            nextTitle: next?.title, hasNext: next != nil)
+        return htmlCache.html(for: cacheKey) { buildHTML(for: content) }
+    }
+
+    private func buildHTML(for content: ChapterContent) -> String {
         let chapter = context.chapter(chapterID)
         let index = context.index(of: chapterID)
         let next = context.neighbour(of: chapterID, 1)
@@ -374,6 +396,7 @@ struct TextReaderScreen: View {
     private func go(_ delta: Int) {
         guard let next = context.neighbour(of: chapterID, delta) else { return }
         if delta > 0 { context.save(chapterID, progress: 1) }
+        Haptics.light()
         chapterID = next.id
     }
 
@@ -389,15 +412,15 @@ struct TextReaderScreen: View {
             subtitle: ChapterLabel.subtitle(number: context.index(of: chapterID) + 1, title: chapter?.title),
             close: { dismiss() }
         ) {
-            Button { showingChapters = true } label: { Image(systemName: "list.bullet").frame(width: 40, height: 40) }
+            Button { showingChapters = true } label: { Image(systemName: "list.bullet").frame(width: 44, height: 44) }
                 .accessibilityLabel("Chapters")
             if ChapterTranslation.isAvailable {
                 Button { showingTranslation = true } label: {
-                    Image(systemName: translateTarget == nil ? "translate" : "character.bubble.fill").frame(width: 40, height: 40)
+                    Image(systemName: translateTarget == nil ? "translate" : "character.bubble.fill").frame(width: 44, height: 44)
                 }
                 .accessibilityLabel("Translate")
             }
-            Button { showingStyle = true } label: { Image(systemName: "textformat.size").frame(width: 40, height: 40) }
+            Button { showingStyle = true } label: { Image(systemName: "textformat.size").frame(width: 44, height: 44) }
                 .accessibilityLabel("Text and theme")
         }
     }
@@ -416,19 +439,7 @@ struct TextReaderScreen: View {
             .foregroundStyle(.secondary)
             Slider(value: Binding(get: { progress }, set: { progress = $0; seek = $0 }), in: 0...1)
                 .accessibilityLabel("Position in chapter")
-            HStack {
-                Button { go(-1) } label: { Label { Text(verbatim: "Ch. \(index)") } icon: { Image(systemName: "chevron.left") } }
-                    .disabled(index == 0)
-                Spacer()
-                Text(verbatim: "\(index + 1) of \(count)").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button { go(1) } label: {
-                    HStack(spacing: 4) { Text(verbatim: "Ch. \(index + 2)"); Image(systemName: "chevron.right") }
-                }
-                .disabled(index >= count - 1)
-            }
-            .font(.subheadline)
-            .labelStyle(.titleAndIcon)
+            ChapterStepper(index: index, count: count) { go($0) }
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -454,6 +465,14 @@ struct PagedReaderScreen: View {
     @State private var showingChapters = false
     @State private var startAtEnd = false
     @State private var prefetched: Set<String> = []
+    @State private var barsTouched = false
+    /// How many times the page-turn hint has been shown; after a few, it stays away.
+    @AppStorage("reader.pagedHintShown") private var hintShown = 0
+
+    private var isLoaded: Bool {
+        if case .loaded = phase { return true }
+        return false
+    }
 
     private var context: ReaderContext { ReaderContext(model: model, key: key) }
     private var rightToLeft: Bool { context.record.map { model.readingMode($0) } != .pagedLeftToRight }
@@ -469,7 +488,10 @@ struct PagedReaderScreen: View {
                     endTitle: "End of \(context.chapter(chapterID)?.title ?? "chapter")",
                     nextTitle: context.neighbour(of: chapterID, 1)?.title,
                     page: $page,
-                    onTapCenter: { withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() } },
+                    onTapCenter: {
+                        barsTouched = true
+                        withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
+                    },
                     onNextChapter: { go(1) },
                     onPreviousChapter: { go(-1, atEnd: true) })
                 .ignoresSafeArea()
@@ -479,7 +501,7 @@ struct PagedReaderScreen: View {
             } else {
                 ChapterStatusView(phase: phase, dark: true, retry: { Task { await load() } }) { phase = .loaded($0) }
             }
-            if showHint, case .loaded = phase {
+            if showHint, hintShown < 3, case .loaded = phase {
                 Text(rightToLeft ? "Tap the left side for the next page (right to left)" : "Tap the right side for the next page")
                     .font(.footnote).foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 8)
@@ -487,7 +509,9 @@ struct PagedReaderScreen: View {
                     .transition(.opacity)
                     .task {
                         try? await Task.sleep(nanoseconds: 2_500_000_000)
+                        guard !Task.isCancelled else { return }
                         withAnimation { showHint = false }
+                        hintShown += 1
                     }
             }
         }
@@ -495,6 +519,7 @@ struct PagedReaderScreen: View {
         .overlay(alignment: .bottom) { if chrome { bottomBar.transition(.opacity) } }
         .environment(\.colorScheme, .dark)
         .statusBarHidden(!chrome)
+        .modifier(AutoHideBars(chrome: $chrome, touched: $barsTouched, ready: isLoaded))
         .task(id: chapterID) { await load() }
         .sheet(isPresented: $showingChapters) {
             ChapterListSheet(key: key, current: chapterID) { chapterID = $0 }
@@ -541,6 +566,7 @@ struct PagedReaderScreen: View {
     private func go(_ delta: Int, atEnd: Bool = false) {
         guard let next = context.neighbour(of: chapterID, delta) else { return }
         if delta > 0 { context.save(chapterID, progress: 1, page: max(0, pageCount - 1)) }
+        Haptics.light()
         startAtEnd = atEnd
         chapterID = next.id
     }
@@ -555,11 +581,12 @@ struct PagedReaderScreen: View {
                 let on = !panelByPanel
                 model.updateRecord(key) { $0.settings.panelByPanel = on }
             } label: {
-                Image(systemName: panelByPanel ? "rectangle.split.2x2.fill" : "rectangle.split.2x2").frame(width: 40, height: 40)
+                Image(systemName: panelByPanel ? "rectangle.split.2x2.fill" : "rectangle.split.2x2").frame(width: 44, height: 44)
             }
             .accessibilityLabel(panelByPanel ? "Show whole pages" : "Read panel by panel")
-            Button { showingChapters = true } label: { Image(systemName: "list.bullet").frame(width: 40, height: 40) }
+            Button { showingChapters = true } label: { Image(systemName: "list.bullet").frame(width: 44, height: 44) }
                 .accessibilityLabel("Chapters")
+            ReadingModeMenu(key: key)
         }
     }
 
@@ -579,7 +606,7 @@ struct PagedReaderScreen: View {
                 .environment(\.layoutDirection, rightToLeft ? .rightToLeft : .leftToRight)
                 .accessibilityLabel("Page")
             }
-            ReadingModePicker(key: key)
+            ChapterStepper(index: context.index(of: chapterID), count: context.chapters.count) { go($0) }
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -602,10 +629,17 @@ struct VerticalReaderScreen: View {
     @State private var phase: ChapterPhase = .loading
     @State private var progress: Double = 0
     @State private var loadingNext = false
+    /// Why the next chapter couldn't be added to the strip. Loading it isn't tried again
+    /// until the person asks, or passes the site's check.
+    @State private var nextFailure: ChapterPhase?
+    @State private var verifying: VerificationRequest?
     @State private var seek: Double?
     @State private var chrome = true
+    @State private var barsTouched = false
     @State private var showingChapters = false
     @State private var visibleChapter = ""
+    /// Auto-scroll stopped by a tap. The speed stays chosen, so it can pick up again.
+    @State private var autoScrollPaused = false
 
     private var context: ReaderContext { ReaderContext(model: model, key: key) }
 
@@ -614,11 +648,22 @@ struct VerticalReaderScreen: View {
             Color.black.ignoresSafeArea()
             if !strip.isEmpty {
                 VerticalImageReader(
-                    chapters: strip, start: start, seek: $seek, autoScrollSpeed: model.autoScrollSpeed(for: key),
+                    chapters: strip, start: start, seek: $seek,
+                    autoScrollSpeed: autoScrollPaused ? 0 : model.autoScrollSpeed(for: key),
                     moreAfterLast: strip.last.flatMap { context.neighbour(of: $0.id, 1) } != nil,
+                    nextFailed: nextFailure != nil,
                     onPosition: { id, value in positionChanged(id, value) },
                     onNearEnd: { Task { await appendNext() } },
-                    onTap: { withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() } })
+                    onTap: {
+                        barsTouched = true
+                        withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
+                    },
+                    onAutoScrollStopped: {
+                        // A tap while auto-scrolling pauses it and brings up the bars, where it resumes.
+                        barsTouched = true
+                        autoScrollPaused = true
+                        withAnimation(.easeInOut(duration: 0.2)) { chrome = true }
+                    })
                 .ignoresSafeArea()
             } else {
                 ChapterStatusView(phase: phase, dark: true, retry: { Task { await restart() } }) { content in
@@ -627,14 +672,24 @@ struct VerticalReaderScreen: View {
             }
         }
         .overlay(alignment: .top) { if chrome { topBar.transition(.opacity) } }
-        .overlay(alignment: .bottom) { if chrome { bottomBar.transition(.opacity) } }
+        .overlay(alignment: .bottom) {
+            VStack(spacing: 12) {
+                nextFailureBanner
+                if chrome { bottomBar.transition(.opacity) }
+            }
+        }
         .environment(\.colorScheme, .dark)
         .statusBarHidden(!chrome)
+        .modifier(AutoHideBars(chrome: $chrome, touched: $barsTouched, ready: !strip.isEmpty))
         .task { await restart() }
         .onChange(of: chapterID) { _, id in
             // Picked from the chapter list (not from scrolling): start over there.
             if id != visibleChapter { Task { await restart() } }
         }
+        .onChange(of: model.verifiedCount) { _, _ in
+            if nextFailure != nil { retryNext() }
+        }
+        .browserVerification($verifying)
         .sheet(isPresented: $showingChapters) {
             ChapterListSheet(key: key, current: chapterID) { chapterID = $0 }
         }
@@ -643,6 +698,7 @@ struct VerticalReaderScreen: View {
     private func restart() async {
         strip = []
         phase = .loading
+        nextFailure = nil
         let loading = chapterID
         let result = await context.load(loading)
         // Picking two chapters quickly starts two restarts; only the newest one's result counts.
@@ -667,11 +723,57 @@ struct VerticalReaderScreen: View {
     }
 
     private func appendNext() async {
-        guard !loadingNext, let last = strip.last, let next = context.neighbour(of: last.id, 1) else { return }
+        guard !loadingNext, nextFailure == nil, let last = strip.last,
+              let next = context.neighbour(of: last.id, 1) else { return }
         loadingNext = true
         defer { loadingNext = false }
-        if case let .loaded(.images(pages)) = await context.load(next.id) {
+        let result = await context.load(next.id)
+        // The strip may have been started over at another chapter while this loaded.
+        guard strip.last?.id == last.id else { return }
+        switch result {
+        case let .loaded(.images(pages)):
             strip.append(StripChapter(id: next.id, title: next.title, pages: pages))
+        case .loaded:
+            nextFailure = .failed("It has text, not pages.")
+        default:
+            nextFailure = result
+        }
+    }
+
+    private func retryNext() {
+        nextFailure = nil
+        Task { await appendNext() }
+    }
+
+    /// Shown over the end of the strip when the next chapter couldn't be loaded, so the
+    /// reader isn't left at "Loading the next chapter…" with no way on.
+    @ViewBuilder
+    private var nextFailureBanner: some View {
+        if let nextFailure {
+            HStack(spacing: 12) {
+                Text(nextFailureText(nextFailure))
+                    .font(.footnote).foregroundStyle(.white).lineLimit(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if case let .needsVerification(url) = nextFailure {
+                    Button("Verify") { verifying = VerificationRequest(url: url) }
+                }
+                Button("Try again") { retryNext() }
+            }
+            .font(.footnote.weight(.semibold))
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.black.opacity(0.85)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.15)))
+            .padding(.horizontal, 16)
+            .padding(.bottom, chrome ? 0 : 28)
+        }
+    }
+
+    private func nextFailureText(_ failure: ChapterPhase) -> String {
+        switch failure {
+        case let .failed(message): return "Couldn't load the next chapter. \(message)"
+        case let .needsVerification(url): return "\(url.host ?? "The site") wants a browser check before the next chapter."
+        case let .unhandledLink(url): return "The next chapter is on \(url.host ?? "another site")."
+        default: return "Couldn't load the next chapter."
         }
     }
 
@@ -680,6 +782,7 @@ struct VerticalReaderScreen: View {
             // Scrolled into the next chapter: the one before is done.
             if context.index(of: id) > context.index(of: visibleChapter) {
                 context.save(visibleChapter, progress: 1)
+                Haptics.light()
             }
             visibleChapter = id
             chapterID = id
@@ -688,14 +791,29 @@ struct VerticalReaderScreen: View {
         context.save(id, progress: value)
     }
 
+    /// The previous or next chapter from the bottom bar: the strip starts over there.
+    private func go(_ delta: Int) {
+        guard let next = context.neighbour(of: chapterID, delta) else { return }
+        if delta > 0 { context.save(chapterID, progress: 1) }
+        Haptics.light()
+        chapterID = next.id
+    }
+
     private var topBar: some View {
         @Bindable var model = model
+        let speed = model.autoScrollSpeed(for: key)
         return ReaderTopBar(
             title: context.record?.title ?? "",
             subtitle: ChapterLabel.subtitle(number: context.index(of: chapterID) + 1, title: context.chapter(chapterID)?.title),
             close: { dismiss() }
         ) {
-            Button { showingChapters = true } label: { Image(systemName: "list.bullet").frame(width: 40, height: 40) }
+            if speed > 0 {
+                Button { autoScrollPaused.toggle() } label: {
+                    Image(systemName: autoScrollPaused ? "play.fill" : "pause.fill").frame(width: 44, height: 44)
+                }
+                .accessibilityLabel(autoScrollPaused ? "Resume auto-scroll" : "Pause auto-scroll")
+            }
+            Button { showingChapters = true } label: { Image(systemName: "list.bullet").frame(width: 44, height: 44) }
                 .accessibilityLabel("Chapters")
             Menu {
                 // Remembered per series: a slow-paced strip and a fast one want different speeds.
@@ -704,17 +822,19 @@ struct VerticalReaderScreen: View {
                     set: { speed in
                         model.updateRecord(key) { $0.settings.autoScrollSpeed = speed }
                         model.settings.autoScrollSpeed = speed
+                        autoScrollPaused = false
                     }
                 )) {
-                    Text("Off").tag(0.0)
+                    Text("Auto-scroll off").tag(0.0)
                     Text("Slow").tag(40.0)
                     Text("Medium").tag(90.0)
                     Text("Fast").tag(160.0)
                 }
+                ReadingModePicker(key: key)
             } label: {
-                Image(systemName: model.autoScrollSpeed(for: key) > 0 ? "play.circle.fill" : "play.circle").frame(width: 40, height: 40)
+                Image(systemName: speed > 0 ? "play.circle.fill" : "slider.horizontal.3").frame(width: 44, height: 44)
             }
-            .accessibilityLabel("Auto-scroll")
+            .accessibilityLabel("Auto-scroll and reading mode")
         }
     }
 
@@ -725,15 +845,13 @@ struct VerticalReaderScreen: View {
                 Spacer()
                 if context.isDownloaded(chapterID) {
                     Label("Downloaded", systemImage: "arrow.down.circle.fill")
-                } else {
-                    Text("Scroll to read")
                 }
             }
             .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
             Slider(value: Binding(get: { progress }, set: { progress = $0; seek = $0 }), in: 0...1)
                 .accessibilityLabel("Position in chapter")
-            ReadingModePicker(key: key)
+            ChapterStepper(index: context.index(of: chapterID), count: context.chapters.count) { go($0) }
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -742,7 +860,8 @@ struct VerticalReaderScreen: View {
     }
 }
 
-/// Right to left / Left to right / Vertical, saved per work.
+/// Right to left / Left to right / Vertical, saved per work. Lives inside a menu: it's
+/// set once per series, so it doesn't take a row of the reader's bottom bar.
 @MainActor
 struct ReadingModePicker: View {
     @Environment(AppModel.self) private var model
@@ -755,7 +874,102 @@ struct ReadingModePicker: View {
         )) {
             ForEach([ReadingMode.pagedRightToLeft, .pagedLeftToRight, .vertical]) { Text($0.label).tag($0) }
         }
-        .pickerStyle(.segmented)
+    }
+}
+
+/// The top bar button that opens the reading mode choices.
+@MainActor
+struct ReadingModeMenu: View {
+    let key: WorkKey
+
+    var body: some View {
+        Menu {
+            ReadingModePicker(key: key)
+        } label: {
+            Image(systemName: "slider.horizontal.3").frame(width: 44, height: 44)
+        }
+        .accessibilityLabel("Reading mode")
+    }
+}
+
+/// Previous chapter, "3 of 40", next chapter: the last row of every reader's bottom bar.
+@MainActor
+struct ChapterStepper: View {
+    /// The current chapter's place in reading order, from 0.
+    let index: Int
+    let count: Int
+    let go: (Int) -> Void
+
+    var body: some View {
+        HStack {
+            Button { go(-1) } label: { Label { Text(verbatim: "Ch. \(index)") } icon: { Image(systemName: "chevron.left") } }
+                .disabled(index == 0)
+                .accessibilityLabel("Previous chapter")
+            Spacer()
+            Text(verbatim: "\(index + 1) of \(count)").font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Button { go(1) } label: {
+                HStack(spacing: 4) { Text(verbatim: "Ch. \(index + 2)"); Image(systemName: "chevron.right") }
+            }
+            .disabled(index >= count - 1)
+            .accessibilityLabel("Next chapter")
+        }
+        .font(.subheadline)
+        .labelStyle(.titleAndIcon)
+    }
+}
+
+/// Hides the reader's bars a moment after the first chapter shows, so the page isn't
+/// covered until a tap. Only once per reading session, and not if the person has already
+/// tapped, or uses VoiceOver (which needs the bars to stay findable).
+struct AutoHideBars: ViewModifier {
+    @Binding var chrome: Bool
+    @Binding var touched: Bool
+    let ready: Bool
+    @State private var done = false
+
+    func body(content: Content) -> some View {
+        content.task(id: ready) {
+            guard ready, !done else { return }
+            done = true
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled, chrome, !touched, !UIAccessibility.isVoiceOverRunning else { return }
+            withAnimation(.easeInOut(duration: 0.2)) { chrome = false }
+        }
+    }
+}
+
+/// Short taps of feedback for things that just happened.
+@MainActor
+enum Haptics {
+    static func light() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+    static func success() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+}
+
+/// Keeps the text reader's page between redraws. Scrolling reports progress many times a
+/// second and each report redraws the reader; building a long chapter's page again every
+/// time (and comparing it with the one loaded) is what made long fics stutter.
+@MainActor
+final class ReaderHTMLCache {
+    struct Key: Equatable {
+        var chapterID: String
+        var content: ChapterContent
+        var style: ReaderStyle
+        var skipNotes: Bool
+        var title: String
+        var index: Int
+        var nextTitle: String?
+        var hasNext: Bool
+    }
+
+    private var key: Key?
+    private var html = ""
+
+    func html(for key: Key, build: () -> String) -> String {
+        if self.key == key { return html }
+        html = build()
+        self.key = key
+        return html
     }
 }
 
