@@ -101,6 +101,13 @@ public final class SourceRuntime: @unchecked Sendable {
         return try await invoke("getListing", [id, page])
     }
 
+    /// One page of the works in a series, from the optional `getSeries(id, page)`. A work
+    /// names its series in `Work.series`; sources without the function only link to it.
+    public func getSeries(id: String, page: Int = 1) async throws -> SearchPage {
+        guard implements("getSeries") else { throw SourceError.missingFunction("getSeries") }
+        return try await invoke("getSeries", [id, page])
+    }
+
     // MARK: Account
 
     /// Who is signed in, from the optional `getAccount()`. Nil when nobody is.
@@ -292,7 +299,7 @@ public final class SourceRuntime: @unchecked Sendable {
             }
         }
         for name in ["getFilters", "getListings", "getListing", "resolveLink", "getLatest", "idFromURL",
-                     "getAccount", "getAccountLists", "getAccountList", "setWorkState", "suggest"] {
+                     "getAccount", "getAccountLists", "getAccountList", "setWorkState", "suggest", "getSeries"] {
             if let fn = source.objectForKeyedSubscript(name), !fn.isUndefined, !fn.isNull {
                 optionalFunctions.insert(name)
             }

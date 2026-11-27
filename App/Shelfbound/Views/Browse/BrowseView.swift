@@ -28,13 +28,20 @@ struct BrowseView: View {
     @State private var discoverToken = 0
     /// Sources still being asked for their lists, so Discover shows rows on the way.
     @State private var discoverLoading = false
+    @State private var renaming: SavedSearch?
+    @State private var renameText = ""
 
     var body: some View {
         NavigationStack(path: $path) {
             List {
                 switch mode {
                 case .search:
-                    if !results.isEmpty || searching { searchResults } else { sources }
+                    if !results.isEmpty || searching {
+                        searchResults
+                    } else {
+                        savedSearches
+                        sources
+                    }
                 case .discover:
                     // The browse rows first, like a storefront; sources and repos follow.
                     // Grouped by source: its name heads its first row, then each list's title.
@@ -74,15 +81,83 @@ struct BrowseView: View {
             }
             .sheet(isPresented: $addingRepo) { NavigationStack { AddRepoView() } }
             .refreshable {
-                await model.refreshRepos()
-                discoverToken += 1
+                if mode == .search {
+                    await model.refreshSavedSearches(force: true)
+                } else {
+                    await model.refreshRepos()
+                    discoverToken += 1
+                }
             }
-            .task { if mode == .discover { await model.refreshRepos() } }
+            .task {
+                if mode == .discover { await model.refreshRepos() } else { await model.refreshSavedSearches() }
+            }
+            .alert("Rename saved search", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+                TextField("Name", text: $renameText)
+                Button("Save") {
+                    if let renaming { model.renameSavedSearch(renaming.id, to: renameText) }
+                    renaming = nil
+                }
+                Button("Cancel", role: .cancel) { renaming = nil }
+            }
             .task(id: model.searchableSources.map(\.id)) { if mode == .discover { await loadDiscover() } }
             .navigationDestination(for: InstalledSource.self) { SourceSearchView(source: $0) }
             .navigationDestination(for: SavedRepo.self) { RepoDetailView(repo: $0) }
             .navigationDestination(for: WorkRoute.self) { WorkDetailView(route: $0) }
             .navigationDestination(for: ListingRoute.self) { ListingView(route: $0) }
+            .navigationDestination(for: SavedSearchRoute.self) {
+                SourceSearchView(source: $0.source, initialValues: $0.filters, title: $0.name, initialQuery: $0.query, savedID: $0.id)
+            }
+        }
+    }
+
+    /// Searches the person kept, each with how many results are new since they last looked.
+    @ViewBuilder
+    private var savedSearches: some View {
+        let sources = model.searchableSources
+        let saved = model.savedSearches.compactMap { search -> SavedSearchRoute? in
+            guard let source = sources.first(where: { $0.id == search.sourceID }) else { return nil }
+            return SavedSearchRoute(source: source, id: search.id, name: search.name, query: search.query,
+                                    filters: search.filters, newCount: search.newCount)
+        }
+        if !saved.isEmpty {
+            Section {
+                ForEach(saved, id: \.id) { item in
+                    NavigationLink(value: item) {
+                        HStack(spacing: 12) {
+                            RowIcon(systemImage: "bookmark.fill", color: .shelfAccent)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.name).lineLimit(1)
+                                Text(item.source.manifest.name).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if item.newCount > 0 {
+                                Text("\(item.newCount) new")
+                                    .font(.caption.weight(.bold).monospacedDigit())
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(Capsule().fill(Color.shelfBadge))
+                            }
+                        }
+                    }
+                    .accessibilityIdentifier("search.saved")
+                    .contextMenu {
+                        Button {
+                            renameText = item.name
+                            renaming = model.savedSearches.first { $0.id == item.id }
+                        } label: {
+                            Label("Rename", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) { model.removeSavedSearch(item.id) } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                }
+                .onDelete { offsets in offsets.map { saved[$0].id }.forEach { model.removeSavedSearch($0) } }
+            } header: {
+                Text("Saved searches")
+            } footer: {
+                Text("Pull down to check for new results.")
+            }
         }
     }
 
@@ -435,6 +510,16 @@ struct DiscoverPlaceholder: View {
     }
 }
 
+/// A saved search opened from the Search tab.
+struct SavedSearchRoute: Hashable {
+    let source: InstalledSource
+    let id: UUID
+    let name: String
+    let query: String
+    let filters: [String: [String]]
+    let newCount: Int
+}
+
 struct DiscoverItem: Identifiable {
     let source: InstalledSource
     let listing: SourceListing
@@ -464,6 +549,11 @@ struct SourceSearchView: View {
     /// Filters to start with, as when a tag on a work's page opens this search.
     var initialValues: [String: [String]]? = nil
     var title: String? = nil
+    /// Text to start with, as when a saved search or an author's name opens this search.
+    var initialQuery: String? = nil
+    /// The saved search this screen was opened from. Its first results count as looked at
+    /// even if the source's filters have changed since it was saved.
+    var savedID: UUID? = nil
 
     @State private var query = ""
     @State private var results: [WorkSummary] = []
@@ -536,6 +626,24 @@ struct SourceSearchView: View {
     @State private var repeatPages = 0
     /// A new search (not a next page) failed while older results are still on screen.
     @State private var firstPageFailed = false
+    /// Results that weren't there the last time the person looked at this saved search.
+    @State private var newIDs: Set<String> = []
+    @State private var namingSaved = false
+    @State private var usedSavedID = false
+    @State private var savedName = ""
+
+    /// The saved search that the results on screen belong to, if they were saved.
+    private var currentSaved: SavedSearch? {
+        guard let text = searchedText, let used = pagedValues else { return nil }
+        return model.savedSearch(sourceID: source.id, query: text, filters: used)
+    }
+
+    /// A finished search with something to it can be saved.
+    private var canSave: Bool {
+        guard let text = searchedText, let used = pagedValues else { return false }
+        if currentSaved != nil { return true }
+        return !results.isEmpty && (!text.isEmpty || filters.contains { $0.isActive(in: used) })
+    }
 
     /// Search results as covers get a scroll view of their own instead of the List (see
     /// PagedCoverGrid). The genre grid, browse lists and list layout stay in the List.
@@ -551,7 +659,8 @@ struct SourceSearchView: View {
                     items: results.map { work in
                         CoverGrid.Item(
                             route: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work),
-                            format: work.format ?? source.manifest.defaultFormat)
+                            format: work.format ?? source.manifest.defaultFormat,
+                            caption: newIDs.contains(work.id) ? "New" : nil)
                     },
                     page: page,
                     hasMore: hasMore,
@@ -571,7 +680,7 @@ struct SourceSearchView: View {
         .scrollContentBackground(.hidden)
         .background(Color(.systemGroupedBackground))
         .safeAreaInset(edge: .top, spacing: 0) {
-            if !filters.isEmpty { filterBar }
+            if !filters.isEmpty || canSave { filterBar }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if idle && stagedCount > 0 {
@@ -630,6 +739,17 @@ struct SourceSearchView: View {
         .sheet(isPresented: $showingFilters) {
             FilterSheet(sourceID: source.id, filters: filters, values: values) { values = $0 }
         }
+        .alert("Save this search", isPresented: $namingSaved) {
+            TextField("Name", text: $savedName)
+            Button("Save") {
+                guard let text = searchedText, let used = pagedValues else { return }
+                model.saveSearch(sourceID: source.id, name: savedName, query: text, filters: used, seen: results.map(\.id))
+                Haptics.light()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It's kept on the Search tab, with a count of the results that are new since you last looked.")
+        }
         .navigationTitle(title ?? source.manifest.name)
         .navigationDestination(item: $opened) { WorkDetailView(route: $0) }
         .toolbar {
@@ -672,7 +792,8 @@ struct SourceSearchView: View {
                 // list leave big gaps and jump when a page was added.
                 ForEach(results) { work in
                     NavigationLink(value: WorkRoute(key: WorkKey(sourceID: source.id, workID: work.id), summary: work)) {
-                        WorkCard(work: work, format: work.format ?? source.manifest.defaultFormat)
+                        WorkCard(work: work, format: work.format ?? source.manifest.defaultFormat,
+                                 sourceLine: newIDs.contains(work.id) ? "New since you last looked" : nil)
                     }
                     .accessibilityIdentifier("work.result")
                     .onAppear { if hasMore, trigger.contains(work.id) { loadNextPage(retry: false) } }
@@ -702,14 +823,26 @@ struct SourceSearchView: View {
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                Button { showingFilters = true } label: {
-                    FilterChipLabel(
-                        text: activeCount == 0 ? "Filters" : "Filters · \(activeCount)", on: false,
-                        systemImage: "line.3.horizontal.decrease")
+                if !filters.isEmpty {
+                    Button { showingFilters = true } label: {
+                        FilterChipLabel(
+                            text: activeCount == 0 ? "Filters" : "Filters · \(activeCount)", on: false,
+                            systemImage: "line.3.horizontal.decrease")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("filters.all")
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("filters.all")
                 SearchLayoutToggle(layout: $layout)
+                if canSave {
+                    let saved = currentSaved
+                    Button { toggleSaved(saved) } label: {
+                        FilterChipLabel(text: saved == nil ? "Save" : "Saved", on: saved != nil,
+                                        systemImage: saved == nil ? "bookmark" : "bookmark.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(saved == nil ? "Save this search" : "Remove this saved search")
+                    .accessibilityIdentifier("search.save")
+                }
                 ForEach(chipFilters) { filter in
                     switch filter.type {
                     case .select, .multi, .toggle: FilterChip(filter: filter, values: $values)
@@ -721,6 +854,19 @@ struct SourceSearchView: View {
             .padding(.vertical, 8)
         }
         .background(Color(.systemGroupedBackground))
+    }
+
+    /// Saves the search on screen (after asking for a name), or forgets it if it was saved.
+    private func toggleSaved(_ saved: SavedSearch?) {
+        if let saved {
+            model.removeSavedSearch(saved.id)
+            newIDs = []
+            return
+        }
+        guard let text = searchedText, let used = pagedValues else { return }
+        let defaults = Dictionary(filters.map { ($0.id, $0.defaultValue ?? []) }, uniquingKeysWith: { first, _ in first })
+        savedName = SavedSearch.suggestedName(query: text, filters: used, defaults: defaults)
+        namingSaved = true
     }
 
     /// Puts the genres picked in the grid into the filters, which runs the search.
@@ -752,15 +898,18 @@ struct SourceSearchView: View {
             listings = (try? await runtime.getListings()) ?? []
         }
         values = start
-        if initialValues != nil {
+        if let initialQuery { query = initialQuery }
+        if initialValues != nil || initialQuery != nil {
             searchedText = ""
-            await run(page: 1)
+            await run(page: 1, typed: initialQuery)
         }
     }
 
-    private func run(page: Int) async {
+    /// `typed` stands in for the search field on the first search of a screen opened with
+    /// its text already chosen.
+    private func run(page: Int, typed: String? = nil) async {
         // Later pages continue the search on screen, not whatever is typed in the field now.
-        let text = page == 1 ? query.trimmingCharacters(in: .whitespaces) : (searchedText ?? "")
+        let text = page == 1 ? (typed ?? query).trimmingCharacters(in: .whitespaces) : (searchedText ?? "")
         let filters = page == 1 ? values : (pagedValues ?? values)
         guard page > 1 || !text.isEmpty || activeFilters || searchedText != nil else { return }
         generation += 1
@@ -779,6 +928,16 @@ struct SourceSearchView: View {
             results = page == 1 ? fresh : results + fresh
             searchedText = text
             pagedValues = filters
+            // A saved search: note which of these are new, and count them all as seen now.
+            let opened = page == 1 && !usedSavedID ? model.savedSearches.first(where: { $0.id == savedID }) : nil
+            if page == 1 { usedSavedID = true }
+            if let saved = opened ?? model.savedSearch(sourceID: source.id, query: text, filters: filters) {
+                let unseen = model.viewedSavedSearch(saved.id, resultIDs: fresh.map(\.id))
+                // Only the first page's are marked: further down, "not seen" just means never scrolled to.
+                if page == 1 { newIDs = unseen }
+            } else if page == 1 {
+                newIDs = []
+            }
             self.page = page
             // Follow the site. A page of nothing but repeats doesn't end the list, but
             // three in a row does, so a site that never says it's done can't loop forever.

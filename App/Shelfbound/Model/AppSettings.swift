@@ -20,12 +20,19 @@ struct AppSettings: Codable, Equatable {
     var downloads = DownloadSettings()
     /// Webtoon auto-scroll speed in points per second; 0 is off.
     var autoScrollSpeed: Double = 0
+    /// Image readers: how much the pages are darkened, 0 (off) to `maxPageTint`.
+    var pageDim: Double = 0
+    /// Image readers: how much the pages are warmed towards amber, 0 (off) to `maxPageTint`.
+    var pageWarmth: Double = 0
+
+    static let maxPageTint = 0.7
 
     init() {}
 
     private enum CodingKeys: String, CodingKey {
         case readerStyle, maxRating, pagedDirection, keepScreenAwake, autoAdvance, updateInterval
         case badgeNewChapters, notifyNewChapters, grouping, sort, downloads, autoScrollSpeed
+        case pageDim, pageWarmth
     }
 
     // Each field falls back to its default, so settings from older builds still load.
@@ -47,5 +54,7 @@ struct AppSettings: Codable, Equatable {
         sort = value(.sort, d.sort)
         downloads = value(.downloads, d.downloads)
         autoScrollSpeed = value(.autoScrollSpeed, d.autoScrollSpeed)
+        pageDim = min(Self.maxPageTint, max(0, value(.pageDim, d.pageDim)))
+        pageWarmth = min(Self.maxPageTint, max(0, value(.pageWarmth, d.pageWarmth)))
     }
 }

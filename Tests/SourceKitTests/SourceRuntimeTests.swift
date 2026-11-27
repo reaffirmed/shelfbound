@@ -85,6 +85,21 @@ final class SourceRuntimeTests: XCTestCase {
         XCTAssertTrue(page.hasMore)
     }
 
+    func testSeriesIsOptional() async throws {
+        let plain = try SourceRuntime(package: package(fullSource), network: network)
+        XCTAssertFalse(plain.implements("getSeries"))
+
+        let script = fullSource.replacingOccurrences(of: "globalThis.source = {", with: #"""
+        globalThis.source = {
+          async getSeries(id, page) { return { results: [{ id: id + "-" + page, title: "Part " + page, authors: ["anon"] }], hasMore: page < 2 }; },
+        """#)
+        let runtime = try SourceRuntime(package: package(script), network: network)
+        XCTAssertTrue(runtime.implements("getSeries"))
+        let page = try await runtime.getSeries(id: "42", page: 1)
+        XCTAssertEqual(page.results.first?.id, "42-1")
+        XCTAssertTrue(page.hasMore)
+    }
+
     func testUndeclaredDomainIsRefused() async throws {
         let script = fullSource.replacingOccurrences(of: "https://example.org/search", with: "https://other.example.com/search")
         let runtime = try SourceRuntime(package: package(script), network: network)

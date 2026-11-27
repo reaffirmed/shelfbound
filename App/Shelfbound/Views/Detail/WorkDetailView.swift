@@ -27,6 +27,8 @@ struct WorkDetailView: View {
     @State private var searchFilters: [SearchFilter] = []
     @State private var tagSearch: TagSearchRoute?
     @State private var deleting: WorkRecord?
+    @State private var author: AuthorRoute?
+    @State private var seriesRoute: SeriesRoute?
 
     private var key: WorkKey { route.key }
     private var record: WorkRecord? { model.record(key) }
@@ -51,6 +53,8 @@ struct WorkDetailView: View {
         .navigationDestination(item: $tagSearch) {
             SourceSearchView(source: $0.source, initialValues: $0.values, title: $0.title)
         }
+        .navigationDestination(item: $author) { AuthorView(route: $0) }
+        .navigationDestination(item: $seriesRoute) { SeriesView(route: $0) }
         .browserVerification($verifying)
         .modifier(DeleteLocalFileDialog(record: $deleting, onDelete: { dismiss() }))
         .sheet(isPresented: $showingStyle) {
@@ -142,7 +146,25 @@ struct WorkDetailView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 let authors = record?.authors ?? route.summary.authors
                 if !authors.isEmpty {
-                    Text("by " + authors.joined(separator: ", ")).font(.subheadline).foregroundStyle(.secondary)
+                    if isLocal {
+                        Text("by " + authors.joined(separator: ", ")).font(.subheadline).foregroundStyle(.secondary)
+                    } else {
+                        // Each name opens that author's other works.
+                        FlowLayout(spacing: 5) {
+                            Text("by").foregroundStyle(.secondary)
+                            ForEach(Array(authors.prefix(6).enumerated()), id: \.offset) { index, name in
+                                Button { author = AuthorRoute(sourceID: key.sourceID, name: name) } label: {
+                                    Text(index < min(authors.count, 6) - 1 ? name + "," : name)
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(Color.shelfAccent)
+                                .accessibilityLabel(name)
+                                .accessibilityHint("Shows other works by this author")
+                                .accessibilityIdentifier("work.author")
+                            }
+                        }
+                        .font(.subheadline)
+                    }
                 }
                 statusChips
             }
@@ -304,9 +326,11 @@ struct WorkDetailView: View {
     @ViewBuilder
     private func series(_ work: Work) -> some View {
         if let parts = work.series, !parts.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
+            // Sources that can list a series open it here; the others link to the site.
+            let listable = !isLocal && model.canListSeries(key.sourceID)
+            VStack(alignment: .leading, spacing: 10) {
                 ForEach(parts, id: \.title) { part in
-                    HStack {
+                    let label = HStack {
                         Image(systemName: "square.stack.3d.up").foregroundStyle(Color.shelfAccent)
                         if let n = part.part {
                             Text("Part \(n) of ").foregroundColor(.secondary) + Text(part.title).bold()
@@ -314,12 +338,31 @@ struct WorkDetailView: View {
                             Text(part.title).bold()
                         }
                         Spacer()
-                        if let url = part.url {
-                            Link(destination: url) { Image(systemName: "arrow.up.right.square") }
-                                .accessibilityLabel("Open series in browser")
-                        }
                     }
-                    .font(.subheadline)
+                    if listable, let id = part.id {
+                        Button {
+                            seriesRoute = SeriesRoute(sourceID: key.sourceID, id: id, title: part.title, url: part.url)
+                        } label: {
+                            HStack {
+                                label
+                                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .font(.subheadline)
+                        .accessibilityHint("Shows the works in this series")
+                        .accessibilityIdentifier("work.series")
+                    } else {
+                        HStack {
+                            label
+                            if let url = part.url {
+                                Link(destination: url) { Image(systemName: "arrow.up.right.square") }
+                                    .accessibilityLabel("Open series in browser")
+                            }
+                        }
+                        .font(.subheadline)
+                    }
                 }
             }
             .padding(12)
@@ -579,6 +622,9 @@ struct WorkDetailView: View {
                         )) {
                             Label("Download new chapters", systemImage: "arrow.down.circle")
                         }
+                    }
+                    if record.inLibrary, !model.shelves.isEmpty {
+                        ShelfMenu(model: model, keys: [key])
                     }
                     Button {
                         if let last = record.readingOrder.last { model.markReadThrough(last.id, in: key) }

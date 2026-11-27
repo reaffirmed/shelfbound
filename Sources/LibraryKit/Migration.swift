@@ -83,5 +83,6 @@ extension LibraryState {
     public mutating func replace(_ old: WorkKey, with record: WorkRecord) {
         records[old.id] = nil
         records[record.key.id] = record
+        moveShelfMembership(from: old, to: record.key)
     }
 }
