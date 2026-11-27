@@ -40,6 +40,12 @@ final class ImageLoader: @unchecked Sendable {
     /// Keys of loads still waiting for a slot as prefetches, so a page that comes on screen
     /// can move its own load to the front.
     private var waitingInBackground: Set<String> = []
+    /// Keys of loads that began as prefetches and were then asked for by a page on screen
+    /// before they reached the queue, so they join it at the front.
+    private var urgentKeys: Set<String> = []
+    /// Tall strips decode to tens of megabytes each, twice over while they're sliced, so
+    /// only this many are decoded at once.
+    private let stripDecodes = DecodeGate(limit: 2)
 
     private struct Waiter {
         let key: String
@@ -101,7 +107,10 @@ final class ImageLoader: @unchecked Sendable {
         }
         let task: Task<Loaded, Error> = lock.withLock {
             if let existing = inFlight[k] {
-                if urgent { promote(k, host: page.url.host ?? "") }
+                if urgent {
+                    urgentKeys.insert(k)
+                    promote(k, host: page.url.host ?? "")
+                }
                 return existing
             }
             let created = Task(priority: urgent ? .userInitiated : .utility) {
@@ -110,7 +119,12 @@ final class ImageLoader: @unchecked Sendable {
             inFlight[k] = created
             return created
         }
-        defer { lock.withLock { inFlight[k] = nil } }
+        defer {
+            lock.withLock {
+                inFlight[k] = nil
+                urgentKeys.remove(k)
+            }
+        }
         let loaded = try await task.value
         let entry = Entry(loaded.slices)
         cache.setObject(entry, forKey: k as NSString, cost: entry.cost)
@@ -146,7 +160,7 @@ final class ImageLoader: @unchecked Sendable {
             if lock.withLock({ browserHosts.contains(host) }),
                let viaBrowser = try? await BrowserFetcher.shared.fetch(request), (200..<300).contains(viaBrowser.status) {
                 try Task.checkCancellation()
-                return try decode(viaBrowser.body, url: page.url, width: width, sliced: sliced)
+                return try await gatedDecode(viaBrowser.body, url: page.url, width: width, sliced: sliced)
             }
             let (body, response) = try await session.data(for: request)
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
@@ -160,7 +174,7 @@ final class ImageLoader: @unchecked Sendable {
                        (200..<300).contains(viaBrowser.status) {
                         lock.withLock { _ = browserHosts.insert(host) }
                         try Task.checkCancellation()
-                        return try decode(viaBrowser.body, url: page.url, width: width, sliced: sliced)
+                        return try await gatedDecode(viaBrowser.body, url: page.url, width: width, sliced: sliced)
                     }
                     throw BrowserVerificationNeeded(url: page.url)
                 }
@@ -169,7 +183,16 @@ final class ImageLoader: @unchecked Sendable {
             data = body
         }
         try Task.checkCancellation()
-        return try decode(data, url: page.url, width: width, sliced: sliced)
+        return try await gatedDecode(data, url: page.url, width: width, sliced: sliced)
+    }
+
+    /// Decodes, letting only a couple of webtoon strips through at a time.
+    private func gatedDecode(_ data: Data, url: URL, width: CGFloat, sliced: Bool) async throws -> Loaded {
+        guard sliced else { return try decode(data, url: url, width: width, sliced: false) }
+        await stripDecodes.enter()
+        defer { stripDecodes.leave() }
+        try Task.checkCancellation()
+        return try autoreleasepool { try decode(data, url: url, width: width, sliced: true) }
     }
 
     private func decode(_ data: Data, url: URL, width: CGFloat, sliced: Bool) throws -> Loaded {
@@ -252,7 +275,7 @@ final class ImageLoader: @unchecked Sendable {
                     return true
                 }
                 let waiter = Waiter(key: key, continuation: continuation)
-                if urgent {
+                if urgent || urgentKeys.contains(key) {
                     waiters[host, default: HostQueue()].urgent.append(waiter)
                 } else {
                     waiters[host, default: HostQueue()].background.append(waiter)
@@ -284,6 +307,41 @@ final class ImageLoader: @unchecked Sendable {
             hostSlots[host] = max(0, hostSlots[host, default: 0] - 1)
             lock.unlock()
         }
+    }
+}
+
+/// Lets a fixed number of callers through at a time; the rest wait their turn.
+final class DecodeGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private let limit: Int
+    private var running = 0
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    init(limit: Int) { self.limit = limit }
+
+    func enter() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let go: Bool = lock.withLock {
+                if running < limit {
+                    running += 1
+                    return true
+                }
+                waiting.append(continuation)
+                return false
+            }
+            if go { continuation.resume() }
+        }
+    }
+
+    func leave() {
+        let next: CheckedContinuation<Void, Never>? = lock.withLock {
+            if waiting.isEmpty {
+                running -= 1
+                return nil
+            }
+            return waiting.removeFirst() // the slot passes straight to the next one waiting
+        }
+        next?.resume()
     }
 }
 

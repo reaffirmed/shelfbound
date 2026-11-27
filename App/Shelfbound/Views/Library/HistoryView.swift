@@ -12,14 +12,16 @@ struct HistoryView: View {
     @State private var confirmingClear = false
     @State private var detail: WorkRoute?
 
-    private var records: [WorkRecord] {
-        let all = model.library.history
+    /// `history` is sorted each time it's asked for, so the screen asks once per redraw.
+    private func matching(_ all: [WorkRecord]) -> [WorkRecord] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return all }
         return all.filter { $0.title.lowercased().contains(q) || $0.summary.authors.contains { $0.lowercased().contains(q) } }
     }
 
     var body: some View {
+        let history = model.library.history
+        let records = matching(history)
         NavigationStack {
             List {
                 ForEach(Self.days(records), id: \.title) { day in
@@ -29,7 +31,7 @@ struct HistoryView: View {
                 }
             }
             .overlay {
-                if model.library.history.isEmpty {
+                if history.isEmpty {
                     ContentUnavailableView(
                         "Nothing read yet", systemImage: "clock",
                         description: Text("Works you open in the reader show up here, newest first."))
@@ -40,18 +42,20 @@ struct HistoryView: View {
             .navigationTitle("History")
             .searchable(text: $query, prompt: "Search history")
             .toolbar {
-                if !model.library.history.isEmpty {
+                if !history.isEmpty {
                     ToolbarItem(placement: .primaryAction) {
                         Button("Clear", role: .destructive) { confirmingClear = true }
                     }
                 }
             }
             .confirmationDialog("Clear your reading history?", isPresented: $confirmingClear, titleVisibility: .visible) {
-                Button("Clear history", role: .destructive) {
-                    for record in model.library.history { model.removeFromHistory(record.key) }
+                Button("Clear older than a month", role: .destructive) {
+                    let cutoff = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
+                    clear(history.filter { ($0.lastReadAt ?? .distantPast) < cutoff })
                 }
+                Button("Clear all history", role: .destructive) { clear(history) }
             } message: {
-                Text("Works stay in your library, but lose their place in the reader.")
+                Text("Works in your library stay there and keep their place in the reader.")
             }
             .navigationDestination(for: WorkRoute.self) { WorkDetailView(route: $0) }
             .navigationDestination(item: $detail) { WorkDetailView(route: $0) }
@@ -97,6 +101,12 @@ struct HistoryView: View {
             }
         }
         .accessibilityIdentifier("history.row")
+    }
+
+    /// Works in the library keep their reading place; ones only opened from a search lose it
+    /// with the rest of their history.
+    private func clear(_ records: [WorkRecord]) {
+        for record in records { model.removeFromHistory(record.key, keepPlace: record.inLibrary) }
     }
 
     /// Back into the reader where it was left, or the work's page if there's no place yet.

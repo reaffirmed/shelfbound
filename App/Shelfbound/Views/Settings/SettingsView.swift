@@ -132,10 +132,12 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Button(action: showBrowse) {
-                        row("Repositories", icon: "shippingbox", color: Color(hex: "#4B4FB8"), value: "\(model.repos.count)", chevron: true)
+                    // Its own screen here, rather than a jump over to the Discover tab.
+                    NavigationLink {
+                        RepositoriesView()
+                    } label: {
+                        row("Repositories", icon: "shippingbox", color: Color(hex: "#4B4FB8"), value: "\(model.repos.count)")
                     }
-                    .buttonStyle(.plain)
                     Picker(selection: ratingBinding) {
                         Text("Safe").tag(ContentRating.safe)
                         Text("Mature").tag(ContentRating.mature)

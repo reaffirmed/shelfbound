@@ -18,7 +18,6 @@ struct WorkDetailView: View {
     @State private var showingStyle = false
     @Environment(\.dismiss) private var dismiss
     @State private var reading: ReaderRequest?
-    @State private var newestFirst = false
     @State private var showingGlossary = false
     @State private var showingHighlights = false
     @State private var showingTranslation = false
@@ -35,29 +34,8 @@ struct WorkDetailView: View {
     private var isLocal: Bool { LocalBooks.isLocal(key) }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                header
-                actions
-                accountActions
-                if let record, record.unreadNewCount > 0, record.inLibrary {
-                    Text(record.unreadNewCount == 1 ? "1 new chapter since you last read." : "\(record.unreadNewCount) new chapters since you last read.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                        .padding(.horizontal, 20).padding(.top, 8)
-                }
-                if let error {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.footnote).foregroundStyle(Color.shelfWarning)
-                        .padding(.horizontal, 20).padding(.top, 10)
-                }
-                stats
-                if let work = record?.work { series(work) }
-                if let record { readingOptions(record) }
-                tags
-                summary
-                chapterList
-            }
-            .padding(.bottom, 40)
+        ScrollViewReader { proxy in
+            page(proxy)
         }
         .navigationTitle(record?.title ?? route.summary.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -100,6 +78,35 @@ struct WorkDetailView: View {
         }
         .sheet(isPresented: $showingHighlights) {
             NavigationStack { HighlightsView(key: key) }
+        }
+    }
+
+    /// The page itself. What the work is (stats, tags, summary) comes before the reading
+    /// options, which are set once and then left alone.
+    private func page(_ proxy: ScrollViewProxy) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                actions
+                accountActions
+                if let record, record.unreadNewCount > 0, record.inLibrary {
+                    Text(record.unreadNewCount == 1 ? "1 new chapter since you last read." : "\(record.unreadNewCount) new chapters since you last read.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .padding(.horizontal, 20).padding(.top, 8)
+                }
+                if let error {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.footnote).foregroundStyle(Color.shelfWarning)
+                        .padding(.horizontal, 20).padding(.top, 10)
+                }
+                stats
+                if let work = record?.work { series(work) }
+                tags
+                summary
+                if let record { readingOptions(record) }
+                chapterList(proxy)
+            }
+            .padding(.bottom, 40)
         }
     }
 
@@ -259,7 +266,7 @@ struct WorkDetailView: View {
         guard let next = record.continueChapter else { return loading ? "Loading..." : "No chapters" }
         let index = (record.readingOrder.firstIndex { $0.id == next.id } ?? 0) + 1
         if record.position == nil { return "Start reading" }
-        return record.format.isText ? "Read ch. \(index)" : "Read ch. \(index)"
+        return "Read ch. \(index)"
     }
 
     // MARK: Stats, series, tags
@@ -487,22 +494,41 @@ struct WorkDetailView: View {
 
     // MARK: Chapters
 
+    /// The order is remembered per work, and "Current" scrolls to the chapter being read,
+    /// which on a long series is a long way down (or up).
     @ViewBuilder
-    private var chapterList: some View {
+    private func chapterList(_ proxy: ScrollViewProxy) -> some View {
+        let newestFirst = record?.settings.chaptersNewestFirst ?? false
         SectionHeader(title: "Chapters", subtitle: record.map { "\($0.readingOrder.count) chapters" }) {
-            Button(newestFirst ? "Newest" : "Oldest") { newestFirst.toggle() }
-                .font(.subheadline)
+            HStack(spacing: 16) {
+                if let current = record?.position?.chapterID {
+                    Button("Current") {
+                        withAnimation { proxy.scrollTo(current, anchor: .center) }
+                    }
+                    .accessibilityLabel("Jump to the current chapter")
+                }
+                Button {
+                    model.updateRecord(key) { $0.settings.chaptersNewestFirst = !newestFirst }
+                } label: {
+                    Label(newestFirst ? "Newest first" : "Oldest first", systemImage: "arrow.up.arrow.down")
+                }
+                .accessibilityHint("Changes the order of the chapter list")
+            }
+            .font(.subheadline)
         }
         if let record {
             let order = record.readingOrder
             let chapters = newestFirst ? Array(order.reversed()) : order
             let groups = ChapterOrder.groups(record.chapters)
+            // Each chapter's number, looked up once instead of searching the list per row.
+            let numbers = Dictionary(order.enumerated().map { ($0.element.id, $0.offset + 1) }, uniquingKeysWith: { first, _ in first })
             LazyVStack(spacing: 0) {
                 if chapters.isEmpty && loading { ProgressView().padding() }
                 ForEach(chapters) { chapter in
-                    ChapterRow(record: record, chapter: chapter, number: (order.firstIndex(of: chapter) ?? 0) + 1, showGroup: groups.count > 1) {
+                    ChapterRow(record: record, chapter: chapter, number: numbers[chapter.id] ?? 0, showGroup: groups.count > 1) {
                         reading = ReaderRequest(key: key, chapterID: chapter.id)
                     }
+                    .id(chapter.id)
                     Divider().padding(.leading, 56)
                 }
             }
@@ -532,10 +558,12 @@ struct WorkDetailView: View {
                 }
                 .accessibilityLabel("More")
             } else if let record {
+                // Not a heart: on AO3 works the Kudos button below is one.
                 Button {
                     model.toggleLibrary(key)
+                    Haptics.light()
                 } label: {
-                    Image(systemName: record.inLibrary ? "heart.fill" : "heart")
+                    Image(systemName: record.inLibrary ? "checkmark.circle.fill" : "plus.circle")
                 }
                 .accessibilityLabel(record.inLibrary ? "Remove from library" : "Add to library")
 

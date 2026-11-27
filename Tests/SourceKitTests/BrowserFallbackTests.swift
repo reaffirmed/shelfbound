@@ -62,6 +62,24 @@ final class BrowserFallbackTests: XCTestCase {
         XCTAssertEqual(calls, 2)
     }
 
+    func testBrowserRedirectToAnUndeclaredHostIsRefused() async {
+        let clearances = ClearanceStore(defaults: nil)
+        clearances.record(host: "example.com", userAgent: "Mozilla/5.0 Test")
+        let network = URLSessionNetwork(session: session(), minimumInterval: .zero, clearances: clearances) { _ in
+            HostResponse(status: 200, url: "https://elsewhere.test/landing", headers: [:], body: "not ours")
+        }
+        let options = FetchOptions(allowRedirect: { $0.host == "www.example.com" })
+        do {
+            _ = try await network.fetch(URLRequest(url: URL(string: "https://www.example.com/series/")!), sourceID: "s", options: options)
+            XCTFail("Expected the redirect to be refused")
+        } catch {
+            XCTAssertEqual((error as? URLError)?.code, .redirectToNonExistentLocation)
+        }
+        // A refused answer doesn't make the host a browser host.
+        let usesBrowser = await network.usesBrowser(for: "www.example.com")
+        XCTAssertFalse(usesBrowser)
+    }
+
     func testNotVerifiedYetAsksThePerson() async {
         let network = URLSessionNetwork(session: session(), minimumInterval: .zero, clearances: ClearanceStore(defaults: nil)) { _ in
             XCTFail("The browser is only used after the person verified")

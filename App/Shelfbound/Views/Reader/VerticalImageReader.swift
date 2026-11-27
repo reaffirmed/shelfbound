@@ -20,9 +20,13 @@ struct VerticalImageReader: UIViewControllerRepresentable {
     var autoScrollSpeed: Double
     /// False when the last loaded chapter is the newest one.
     var moreAfterLast: Bool
+    /// The next chapter couldn't be loaded; the end of the strip says so instead of "Loading".
+    var nextFailed = false
     var onPosition: (String, Double) -> Void
     var onNearEnd: () -> Void
     var onTap: () -> Void
+    /// A tap stopped auto-scroll. The reader pauses it, so it doesn't start again on the next update.
+    var onAutoScrollStopped: () -> Void = {}
 
     func makeUIViewController(context: Context) -> VerticalImageReaderController {
         let controller = VerticalImageReaderController()
@@ -36,6 +40,7 @@ struct VerticalImageReader: UIViewControllerRepresentable {
         controller.set(chapters: chapters, start: start)
         controller.autoScrollSpeed = autoScrollSpeed
         controller.moreAfterLast = moreAfterLast
+        controller.nextFailed = nextFailed
         if let seek {
             controller.seek(to: seek)
             DispatchQueue.main.async { self.seek = nil }
@@ -43,7 +48,7 @@ struct VerticalImageReader: UIViewControllerRepresentable {
     }
 
     private var callbacks: VerticalImageReaderController.Callbacks {
-        .init(position: onPosition, nearEnd: onNearEnd, tap: onTap)
+        .init(position: onPosition, nearEnd: onNearEnd, tap: onTap, autoScrollStopped: onAutoScrollStopped)
     }
 }
 
@@ -52,6 +57,7 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
         var position: (String, Double) -> Void = { _, _ in }
         var nearEnd: () -> Void = {}
         var tap: () -> Void = {}
+        var autoScrollStopped: () -> Void = {}
     }
 
     var callbacks = Callbacks()
@@ -59,12 +65,17 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
         didSet { updateAutoScroll() }
     }
     var moreAfterLast = true {
-        didSet {
-            guard moreAfterLast != oldValue, !chapters.isEmpty else { return }
-            let last = IndexPath(item: 0, section: chapters.count - 1)
-            if let footer = collectionView.supplementaryView(forElementKind: UICollectionView.elementKindSectionFooter, at: last) as? ChapterFooter {
-                footer.configure(ended: chapters[last.section].title, next: nil, more: moreAfterLast)
-            }
+        didSet { if moreAfterLast != oldValue { refreshLastFooter() } }
+    }
+    var nextFailed = false {
+        didSet { if nextFailed != oldValue { refreshLastFooter() } }
+    }
+
+    private func refreshLastFooter() {
+        guard isViewLoaded, !chapters.isEmpty else { return }
+        let last = IndexPath(item: 0, section: chapters.count - 1)
+        if let footer = collectionView.supplementaryView(forElementKind: UICollectionView.elementKindSectionFooter, at: last) as? ChapterFooter {
+            footer.configure(ended: chapters[last.section].title, next: nil, more: moreAfterLast, failed: nextFailed)
         }
     }
 
@@ -140,7 +151,9 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         // The strip is laid out at screen size; zooming scales it, so only resize it unzoomed.
-        if zoomView.zoomScale <= 1, collectionView.frame.size != zoomView.bounds.size {
+        // Exactly unzoomed: while a pinch has it bounced below 1x the strip carries a scale
+        // transform, and setting its frame then leaves it the wrong size.
+        if abs(zoomView.zoomScale - 1) < 0.001, collectionView.frame.size != zoomView.bounds.size {
             collectionView.frame = CGRect(origin: .zero, size: zoomView.bounds.size)
             zoomView.contentSize = zoomView.bounds.size
         }
@@ -183,6 +196,12 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
     }
 
     // The display link holds on to this controller, so stop it when the reader closes.
+    // Closing mid-scroll: the last place reported can be half a second old, so send the real one.
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        reportPosition(force: true)
+    }
+
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         displayLink?.invalidate()
@@ -294,7 +313,10 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
 
     @objc private func tapped() {
         if displayLink != nil {
+            // Stops here at once; the reader then keeps it paused until it's resumed.
             autoScrollSpeed = 0
+            callbacks.autoScrollStopped()
+            return
         }
         callbacks.tap()
     }
@@ -319,6 +341,8 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
         let maxY = collectionView.contentSize.height - collectionView.bounds.height
         let y = min(maxY, collectionView.contentOffset.y + CGFloat(autoScrollSpeed * dt))
         collectionView.contentOffset.y = max(0, y)
+        // At the very end nothing scrolls any more, so no scroll event sends the last place.
+        if y >= maxY { reportPosition(force: true) }
     }
 
     // MARK: Data source
@@ -370,7 +394,7 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
     func collectionView(_ collectionView: UICollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> UICollectionReusableView {
         let footer = collectionView.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: "footer", for: indexPath) as! ChapterFooter
         let next = indexPath.section + 1 < chapters.count ? chapters[indexPath.section + 1].title : nil
-        footer.configure(ended: chapters[indexPath.section].title, next: next, more: moreAfterLast)
+        footer.configure(ended: chapters[indexPath.section].title, next: next, more: moreAfterLast, failed: nextFailed)
         return footer
     }
 
@@ -556,9 +580,10 @@ final class ChapterFooter: UICollectionReusableView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    func configure(ended: String, next: String?, more: Bool) {
+    func configure(ended: String, next: String?, more: Bool, failed: Bool = false) {
         let after = next.map { "\n\nNext: \($0)" }
-            ?? (more ? "\n\nLoading the next chapter…" : "\n\nYou're caught up. New chapters will show a badge in your library.")
+            ?? (more && failed ? "\n\nThe next chapter didn't load."
+                : more ? "\n\nLoading the next chapter…" : "\n\nYou're caught up. New chapters will show a badge in your library.")
         label.text = "End of \(ended)" + after
     }
 }

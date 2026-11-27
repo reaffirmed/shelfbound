@@ -184,6 +184,8 @@ struct ListingView: View {
     @State private var error: String?
     @State private var verifying: VerificationRequest?
     @State private var opened: WorkRoute?
+    /// Pages in a row that brought only works already shown.
+    @State private var repeatPages = 0
 
     var body: some View {
         PagedCoverGrid(
@@ -239,13 +241,18 @@ struct ListingView: View {
             let result = try await model.listing(sourceID: route.source.id, listingID: route.listing.id, page: next, refresh: refresh)
             if next == 1 {
                 results = result.results.uniqued()
+                repeatPages = 0
             } else {
                 // Only works not already shown: a repeated ID makes the grid drop or redraw tiles.
                 var seen = Set(results.map(\.id))
-                results += result.results.filter { seen.insert($0.id).inserted }
+                let fresh = result.results.filter { seen.insert($0.id).inserted }
+                results += fresh
+                // A site that hands back the same works for every page never says it's done.
+                // Three such pages in a row end the list, as in search.
+                repeatPages = fresh.isEmpty ? repeatPages + 1 : 0
             }
             page = next
-            hasMore = result.hasMore && !result.results.isEmpty
+            hasMore = result.hasMore && !result.results.isEmpty && repeatPages < 3
             error = nil
         } catch is CancellationError {
             return

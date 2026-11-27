@@ -76,6 +76,48 @@ struct AddRepoView: View {
     }
 }
 
+/// The repositories list as its own screen, for Settings. (Discover shows the same list
+/// under its rows.)
+@MainActor
+struct RepositoriesView: View {
+    @Environment(AppModel.self) private var model
+    @State private var addingRepo = false
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(model.repos) { repo in
+                    NavigationLink {
+                        RepoDetailView(repo: repo)
+                    } label: {
+                        HStack(spacing: 12) {
+                            RowIcon(systemImage: "shippingbox", color: .shelfAccent)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(repo.name)
+                                Text(repo.sourceCount.map { $0 == 1 ? "1 source" : "\($0) sources" } ?? (repo.url.host ?? ""))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                .onDelete { offsets in offsets.map { model.repos[$0] }.forEach { model.removeRepo($0) } }
+                Button { addingRepo = true } label: {
+                    HStack(spacing: 12) {
+                        RowIcon(systemImage: "plus", color: Color(.systemGray3))
+                        Text("Add Repository…")
+                    }
+                }
+            } footer: {
+                Text("Repositories are lists of sources made by other people. Shelfbound doesn't host or check any content.")
+            }
+        }
+        .navigationTitle("Repositories")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $addingRepo) { NavigationStack { AddRepoView() } }
+        .task { await model.refreshRepos() }
+    }
+}
+
 @MainActor
 struct RepoDetailView: View {
     @Environment(AppModel.self) private var model
