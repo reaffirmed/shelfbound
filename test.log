@@ -1,0 +1,918 @@
+Command line invocation:
+    /Applications/Xcode_26.3.app/Contents/Developer/usr/bin/xcodebuild test-without-building -project Shelfbound.xcodeproj -scheme Shelfbound -destination id=3F9F13FC-F333-41EC-9C54-104D87CB2BF5 -derivedDataPath /Users/runner/work/_temp/dd -resultBundlePath /Users/runner/work/_temp/Walkthrough.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  SwiftSoup: https://github.com/scinfu/SwiftSoup.git @ 2.9.6
+  ShelfKit: /Users/runner/work/shelfbound/shelfbound
+  swift-asn1: https://github.com/apple/swift-asn1.git @ 1.4.0
+  swift-crypto: https://github.com/apple/swift-crypto.git @ 3.15.1
+  ZIPFoundation: https://github.com/weichsel/ZIPFoundation @ 0.9.21
+
+Writing result bundle at path:
+	/Users/runner/work/_temp/Walkthrough.xcresult
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS Simulator, arch:arm64, id:3F9F13FC-F333-41EC-9C54-104D87CB2BF5, OS:26.2, name:iPhone 16 Pro }
+{ platform:iOS Simulator, arch:x86_64, id:3F9F13FC-F333-41EC-9C54-104D87CB2BF5, OS:26.2, name:iPhone 16 Pro }
+2026-11-27 06:46:33.911287+0000 ShelfboundUITests-Runner[15232:46165] [Default] Running tests...
+2026-11-27 06:46:34.029689+0000 ShelfboundUITests-Runner[15232:46350] [General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+2026-11-27 06:46:34.074216+0000 ShelfboundUITests-Runner[15232:46347] [General] Failed to send CA Event for app launch measurements for ca_event_type: 1 event_name: com.apple.app_launch_measurement.ExtendedLaunchMetrics
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'All tests' started at 2026-11-27 06:46:45.173.
+Test Suite 'ShelfboundUITests.xctest' started at 2026-11-27 06:46:45.174.
+Test Suite 'WalkthroughUITests' started at 2026-11-27 06:46:45.175.
+Test Case '-[ShelfboundUITests.WalkthroughUITests testWalkthrough]' started.
+    t =     0.00s Start Test at 2026-11-27 06:46:45.178
+    t =     0.69s Set Up
+    t =     0.70s     Open app.shelfbound.Shelfbound
+    t =     0.70s         Launch app.shelfbound.Shelfbound
+    t =    14.83s             Setting up automation session
+    t =    16.97s             Wait for app.shelfbound.Shelfbound to idle
+    t =    20.56s Library on first launch
+    t =    20.60s     Waiting 3.0s for Alert (First Match) to exist
+    t =    21.65s         Checking `Expect predicate `existsNoRetry == 1` for object Alert (First Match)`
+    t =    21.65s             Checking existence of `Alert (First Match)`
+    t =    21.93s             Capturing element debug description
+    t =    22.65s         Checking `Expect predicate `existsNoRetry == 1` for object Alert (First Match)`
+    t =    22.65s             Checking existence of `Alert (First Match)`
+    t =    22.73s             Capturing element debug description
+    t =    23.62s         Checking `Expect predicate `existsNoRetry == 1` for object Alert (First Match)`
+    t =    23.62s             Checking existence of `Alert (First Match)`
+    t =    23.76s             Capturing element debug description
+    t =    23.76s         Checking existence of `Alert (First Match)`
+    t =    23.91s     Collecting debug information to assist test failure triage
+    t =    23.91s         Requesting snapshot of accessibility hierarchy for app with pid 3276
+    t =    24.12s     Waiting 20.0s for "Library" Button to exist
+    t =    25.18s         Checking `Expect predicate `existsNoRetry == 1` for object "Library" Button`
+    t =    25.18s             Checking existence of `"Library" Button`
+    t =    25.49s     Tap "Library" Button
+    t =    25.49s         Wait for app.shelfbound.Shelfbound to idle
+    t =    25.50s         Find the "Library" Button
+    t =    25.66s         Check for interrupting elements affecting "Library" Button
+    t =    25.83s         Synthesize event
+    t =    26.27s         Wait for app.shelfbound.Shelfbound to idle
+    t =    27.95s     Added attachment named '01 Library on first launch'
+    t =    27.95s Library: empty, offers importing files
+    t =    27.95s     Waiting 10.0s for "library.importFiles" Button to exist
+    t =    28.98s         Checking `Expect predicate `existsNoRetry == 1` for object "library.importFiles" Button`
+    t =    28.98s             Checking existence of `"library.importFiles" Button`
+    t =    29.30s     Added attachment named '02 Library: empty, offers importing files'
+    t =    29.30s Tab bar: Discover, Search, Library, History, Settings
+    t =    29.30s     Checking existence of `"Discover" Button`
+    t =    29.35s     Checking existence of `"Search" Button`
+    t =    29.40s     Checking existence of `"Library" Button`
+    t =    29.47s     Checking existence of `"History" Button`
+    t =    29.57s     Checking existence of `"Settings" Button`
+    t =    29.62s     Tap "Discover" Button
+    t =    29.62s         Wait for app.shelfbound.Shelfbound to idle
+    t =    29.63s         Find the "Discover" Button
+    t =    29.72s         Check for interrupting elements affecting "Discover" Button
+    t =    29.82s         Synthesize event
+    t =    30.13s         Wait for app.shelfbound.Shelfbound to idle
+    t =    32.18s     Waiting 10.0s for "Discover" NavigationBar to exist
+    t =    33.21s         Checking `Expect predicate `existsNoRetry == 1` for object "Discover" NavigationBar`
+    t =    33.21s             Checking existence of `"Discover" NavigationBar`
+    t =    33.50s     Added attachment named '03 Tab bar: Discover, Search, Library, History, Settings'
+    t =    33.50s Add repository: check
+    t =    33.51s     Waiting 5.0s for "Add repository" Button to exist
+    t =    34.55s         Checking `Expect predicate `existsNoRetry == 1` for object "Add repository" Button`
+    t =    34.55s             Checking existence of `"Add repository" Button`
+    t =    34.63s     Tap "Add repository" Button
+    t =    34.63s         Wait for app.shelfbound.Shelfbound to idle
+    t =    34.63s         Find the "Add repository" Button
+    t =    34.71s         Check for interrupting elements affecting "plus" Button
+    t =    34.79s         Synthesize event
+    t =    35.12s         Wait for app.shelfbound.Shelfbound to idle
+    t =    36.30s     Waiting 10.0s for TextField (First Match) to exist
+    t =    37.32s         Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    37.32s             Checking existence of `TextField (First Match)`
+    t =    37.75s     Tap TextField (First Match)
+    t =    37.75s         Wait for app.shelfbound.Shelfbound to idle
+    t =    37.77s         Find the TextField (First Match)
+    t =    38.28s         Check for interrupting elements affecting "https://someone.github.io/repo" TextField
+    t =    38.44s         Synthesize event
+    t =    38.78s         Wait for app.shelfbound.Shelfbound to idle
+    t =    41.31s     Type 'https://reaffirmed...' into "https://someone.github.io/repo" TextField
+    t =    41.31s         Wait for app.shelfbound.Shelfbound to idle
+    t =    41.92s         Find the "https://someone.github.io/repo" TextField
+    t =    43.36s         Check for interrupting elements affecting "https://someone.github.io/repo" TextField
+    t =    43.52s         Synthesize event
+    t =    44.56s         Wait for app.shelfbound.Shelfbound to idle
+    t =    44.57s     Waiting 5.0s for "Check repository" Button to exist
+    t =    45.59s         Checking `Expect predicate `existsNoRetry == 1` for object "Check repository" Button`
+    t =    45.59s             Checking existence of `"Check repository" Button`
+    t =    45.91s     Tap "Check repository" Button
+    t =    45.91s         Wait for app.shelfbound.Shelfbound to idle
+    t =    45.93s         Find the "Check repository" Button
+    t =    46.12s         Check for interrupting elements affecting "Check repository" Button
+    t =    46.28s         Synthesize event
+    t =    46.75s         Wait for app.shelfbound.Shelfbound to idle
+    t =    47.16s     Waiting 30.0s for "About this repository" StaticText to exist
+    t =    48.24s         Checking `Expect predicate `existsNoRetry == 1` for object "About this repository" StaticText`
+    t =    48.24s             Checking existence of `"About this repository" StaticText`
+    t =    48.94s     Added attachment named '04 Add repository: check'
+    t =    48.94s Add repository: added
+    t =    48.94s     Checking existence of `"Add repository" Button`
+    t =    49.64s     Waiting 5.0s for "Add repository" Button to exist
+    t =    50.71s         Checking `Expect predicate `existsNoRetry == 1` for object "Add repository" Button`
+    t =    50.72s             Checking existence of `"Add repository" Button`
+    t =    51.48s     Tap "Add repository" Button
+    t =    51.48s         Wait for app.shelfbound.Shelfbound to idle
+    t =    51.55s         Find the "Add repository" Button
+    t =    51.89s         Check for interrupting elements affecting "Add repository" Button
+    t =    52.08s         Synthesize event
+    t =    52.10s             Scroll element to visible
+    t =    52.11s             Find the "Add repository" Button
+    t =    52.56s             Computed hit point {201, 462.33333333333326} after scrolling to visible
+    t =    53.08s         Wait for app.shelfbound.Shelfbound to idle
+    t =    53.47s     Waiting 10.0s for "Discover" NavigationBar to exist
+    t =    54.52s         Checking `Expect predicate `existsNoRetry == 1` for object "Discover" NavigationBar`
+    t =    54.52s             Checking existence of `"Discover" NavigationBar`
+    t =    54.81s     Added attachment named '05 Add repository: added'
+    t =    54.81s Repository sources
+    t =    54.81s     Waiting 15.0s for "browse.repo" Button to exist
+    t =    55.88s         Checking `Expect predicate `existsNoRetry == 1` for object "browse.repo" Button`
+    t =    55.88s             Checking existence of `"browse.repo" Button`
+    t =    56.61s     Tap "browse.repo" Button
+    t =    56.61s         Wait for app.shelfbound.Shelfbound to idle
+    t =    56.61s         Find the "browse.repo" Button
+    t =    59.40s         Check for interrupting elements affecting "browse.repo" Button
+    t =    59.58s         Synthesize event
+    t =    59.89s         Wait for app.shelfbound.Shelfbound to idle
+    t =    61.11s     Waiting 30.0s for "Install" Button to exist
+    t =    62.20s         Checking `Expect predicate `existsNoRetry == 1` for object "Install" Button`
+    t =    62.20s             Checking existence of `"Install" Button`
+    t =    62.47s     Added attachment named '06 Repository sources'
+    t =    62.48s Install WeebCentral
+    t =    62.48s     Waiting 15.0s for Cell (First Match) to exist
+    t =    63.51s         Checking `Expect predicate `existsNoRetry == 1` for object Cell (First Match)`
+    t =    63.51s             Checking existence of `Cell (First Match)`
+    t =    64.05s     Checking existence of `"Install" Button`
+    t =    64.47s     Tap "Install" Button
+    t =    64.47s         Wait for app.shelfbound.Shelfbound to idle
+    t =    64.47s         Find the "Install" Button
+    t =    64.88s         Check for interrupting elements affecting "Install" Button
+    t =    64.99s         Synthesize event
+    t =    65.38s         Wait for app.shelfbound.Shelfbound to idle
+    t =    65.47s     Waiting 45.0s for "Installed" StaticText to exist
+    t =    66.51s         Checking `Expect predicate `existsNoRetry == 1` for object "Installed" StaticText`
+    t =    66.51s             Checking existence of `"Installed" StaticText`
+    t =    66.97s     Added attachment named '07 Install WeebCentral'
+    t =    66.97s Install AO3
+    t =    66.97s     Waiting 15.0s for Cell (First Match) to exist
+    t =    68.00s         Checking `Expect predicate `existsNoRetry == 1` for object Cell (First Match)`
+    t =    68.00s             Checking existence of `Cell (First Match)`
+    t =    68.19s     Checking existence of `"Install" Button`
+    t =    68.32s     Tap "Install" Button
+    t =    68.32s         Wait for app.shelfbound.Shelfbound to idle
+    t =    68.32s         Find the "Install" Button
+    t =    68.45s         Check for interrupting elements affecting "Install" Button
+    t =    68.57s         Synthesize event
+    t =    68.87s         Wait for app.shelfbound.Shelfbound to idle
+    t =    68.87s     Waiting 45.0s for "Installed" StaticText to exist
+    t =    69.97s         Checking `Expect predicate `existsNoRetry == 1` for object "Installed" StaticText`
+    t =    69.97s             Checking existence of `"Installed" StaticText`
+    t =    70.40s     Added attachment named '08 Install AO3'
+    t =    70.40s Settings: allow explicit sources
+    t =    70.40s     Tap "Settings" Button
+    t =    70.40s         Wait for app.shelfbound.Shelfbound to idle
+    t =    70.40s         Find the "Settings" Button
+    t =    70.49s         Check for interrupting elements affecting "gearshape" Button
+    t =    70.62s         Synthesize event
+    t =    70.96s         Wait for app.shelfbound.Shelfbound to idle
+    t =    73.51s     Checking existence of `Button (First Match)`
+    t =    74.37s     Swipe up Target Application 'app.shelfbound.Shelfbound'
+    t =    74.37s         Wait for app.shelfbound.Shelfbound to idle
+    t =    74.38s         Find the Target Application 'app.shelfbound.Shelfbound'
+    t =    74.45s         Check for interrupting elements affecting "Shelfbound" Application
+    t =    74.53s         Synthesize event
+    t =    75.15s         Wait for app.shelfbound.Shelfbound to idle
+    t =    78.13s     Checking existence of `Button (First Match)`
+    t =    78.55s     Find the Button (First Match)
+    t =    78.97s     Checking existence of `"Show sources rated up to, Mature" Button`
+    t =    79.30s     Find the "Show sources rated up to, Mature" Button
+    t =    79.66s     Checking existence of `"Show sources rated up to, Mature" Button`
+    t =    79.98s     Find the "Show sources rated up to, Mature" Button
+    t =    80.31s     Checking existence of `"Show sources rated up to, Mature" Button`
+    t =    80.53s     Find the "Show sources rated up to, Mature" Button
+    t =    80.81s     Waiting 5.0s for "Show sources rated up to, Mature" Button to exist
+    t =    81.83s         Checking `Expect predicate `existsNoRetry == 1` for object "Show sources rated up to, Mature" Button`
+    t =    81.83s             Checking existence of `"Show sources rated up to, Mature" Button`
+    t =    82.17s     Tap "Show sources rated up to, Mature" Button
+    t =    82.17s         Wait for app.shelfbound.Shelfbound to idle
+    t =    82.17s         Find the "Show sources rated up to, Mature" Button
+    t =    82.51s         Check for interrupting elements affecting "Show sources rated up to, Mature" Button
+    t =    82.64s         Synthesize event
+    t =    82.97s         Wait for app.shelfbound.Shelfbound to idle
+    t =    83.58s     Waiting 5.0s for "Explicit" Button to exist
+    t =    84.61s         Checking `Expect predicate `existsNoRetry == 1` for object "Explicit" Button`
+    t =    84.61s             Checking existence of `"Explicit" Button`
+    t =    84.91s     Tap "Explicit" Button
+    t =    84.91s         Wait for app.shelfbound.Shelfbound to idle
+    t =    84.92s         Find the "Explicit" Button
+    t =    85.05s         Check for interrupting elements affecting "Explicit" Button
+    t =    85.17s         Synthesize event
+    t =    85.50s         Wait for app.shelfbound.Shelfbound to idle
+    t =    88.37s     Added attachment named '09 Settings: allow explicit sources'
+    t =    88.38s Settings: accounts
+    t =    88.38s     Checking existence of `"settings.accounts" Button`
+    t =    88.65s     Find the "settings.accounts" Button
+    t =    88.99s     Checking existence of `"settings.accounts" Button`
+    t =    89.29s     Find the "settings.accounts" Button
+    t =    89.55s     Checking existence of `"settings.accounts" Button`
+    t =    90.16s     Find the "settings.accounts" Button
+    t =    90.41s     Checking existence of `"settings.accounts" Button`
+    t =    90.66s     Find the "settings.accounts" Button
+    t =    90.89s     Checking existence of `"settings.accounts" Button`
+    t =    91.19s     Find the "settings.accounts" Button
+    t =    91.50s     Checking existence of `"settings.accounts" Button`
+    t =    91.80s     Find the "settings.accounts" Button
+    t =    92.07s     Waiting 5.0s for "settings.accounts" Button to exist
+    t =    93.12s         Checking `Expect predicate `existsNoRetry == 1` for object "settings.accounts" Button`
+    t =    93.12s             Checking existence of `"settings.accounts" Button`
+    t =    93.37s     Tap "settings.accounts" Button
+    t =    93.37s         Wait for app.shelfbound.Shelfbound to idle
+    t =    93.38s         Find the "settings.accounts" Button
+    t =    93.63s         Check for interrupting elements affecting "settings.accounts" Button
+    t =    93.73s         Synthesize event
+    t =    94.04s         Wait for app.shelfbound.Shelfbound to idle
+    t =    95.03s     Waiting 10.0s for "account.source" Button to exist
+    t =    96.04s         Checking `Expect predicate `existsNoRetry == 1` for object "account.source" Button`
+    t =    96.04s             Checking existence of `"account.source" Button`
+    t =    96.44s     Added attachment named '10 Settings: accounts'
+    t =    96.44s Settings: AO3 account, signed out
+    t =    96.44s     Checking existence of `"account.source" Button`
+    t =    96.57s     Tap "account.source" Button
+    t =    96.57s         Wait for app.shelfbound.Shelfbound to idle
+    t =    96.58s         Find the "account.source" Button
+    t =    96.74s         Check for interrupting elements affecting "account.source" Button
+    t =    96.80s         Synthesize event
+    t =    97.11s         Wait for app.shelfbound.Shelfbound to idle
+    t =    97.55s     Waiting 10.0s for "Sign in to Archive of Our Own" Button to exist
+    t =    98.57s         Checking `Expect predicate `existsNoRetry == 1` for object "Sign in to Archive of Our Own" Button`
+    t =    98.57s             Checking existence of `"Sign in to Archive of Our Own" Button`
+    t =    98.73s     Checking existence of `Button (Element at index 0)`
+    t =    98.78s     Tap Button (Element at index 0)
+    t =    98.78s         Wait for app.shelfbound.Shelfbound to idle
+    t =    98.79s         Find the Button (Element at index 0)
+    t =    98.85s         Check for interrupting elements affecting "BackButton" Button
+    t =    98.93s         Synthesize event
+    t =    99.27s         Wait for app.shelfbound.Shelfbound to idle
+    t =   100.71s     Checking existence of `Button (Element at index 0)`
+    t =   100.75s     Tap Button (Element at index 0)
+    t =   100.75s         Wait for app.shelfbound.Shelfbound to idle
+    t =   100.75s         Find the Button (Element at index 0)
+    t =   100.80s         Check for interrupting elements affecting "BackButton" Button
+    t =   100.85s         Synthesize event
+    t =   101.16s         Wait for app.shelfbound.Shelfbound to idle
+    t =   102.91s     Added attachment named '11 Settings: AO3 account, signed out'
+    t =   102.92s Settings: backup
+    t =   102.92s     Checking existence of `Button (First Match)`
+    t =   103.21s     Find the Button (First Match)
+    t =   103.54s     Checking existence of `"Back up library" Button`
+    t =   103.92s     Find the "Back up library" Button
+    t =   104.34s     Checking existence of `"Back up library" Button`
+    t =   104.63s     Find the "Back up library" Button
+    t =   104.89s     Checking existence of `"Back up library" Button`
+    t =   105.28s     Find the "Back up library" Button
+    t =   105.61s     Checking existence of `"Back up library" Button`
+    t =   105.93s     Find the "Back up library" Button
+    t =   106.23s     Checking existence of `"Back up library" Button`
+    t =   106.52s     Find the "Back up library" Button
+    t =   106.86s     Checking existence of `"Back up library" Button`
+    t =   107.18s     Checking existence of `Button (First Match)`
+    t =   107.66s     Added attachment named '12 Settings: backup'
+    t =   107.66s Discover with sources installed
+    t =   107.66s     Tap "Discover" Button
+    t =   107.66s         Wait for app.shelfbound.Shelfbound to idle
+    t =   107.66s         Find the "Discover" Button
+    t =   107.77s         Check for interrupting elements affecting "book" Button
+    t =   107.85s         Synthesize event
+    t =   108.16s         Wait for app.shelfbound.Shelfbound to idle
+    t =   109.75s     Checking existence of `"Discover" NavigationBar`
+    t =   109.85s     Checking existence of `Button (Element at index 0)`
+    t =   109.99s     Tap Button (Element at index 0)
+    t =   109.99s         Wait for app.shelfbound.Shelfbound to idle
+    t =   110.00s         Find the Button (Element at index 0)
+    t =   110.07s         Check for interrupting elements affecting "BackButton" Button
+    t =   110.17s         Synthesize event
+    t =   110.49s         Wait for app.shelfbound.Shelfbound to idle
+    t =   113.18s     Checking existence of `"Discover" NavigationBar`
+    t =   113.30s     Checking existence of `"Discover" NavigationBar`
+    t =   113.40s     Checking existence of `"Discover" NavigationBar`
+    t =   113.51s     Checking existence of `"Discover" NavigationBar`
+    t =   113.57s     Checking existence of `SearchField (First Match)`
+    t =   122.47s     Added attachment named '13 Discover with sources installed'
+    t =   122.47s Discover scrolled
+    t =   122.47s     Press Target Application 'app.shelfbound.Shelfbound'[0.04, 0.85] for 0.1 seconds, then drag to Target Application 'app.shelfbound.Shelfbound'[0.04, 0.15] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   122.47s         Wait for app.shelfbound.Shelfbound to idle
+    t =   122.47s         Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   122.61s         Check for interrupting elements affecting "Shelfbound" Application
+    t =   122.69s         Synthesize event
+    t =   122.69s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   122.76s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   122.83s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   122.89s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   122.98s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   124.58s         Wait for app.shelfbound.Shelfbound to idle
+    t =   126.36s     Press Target Application 'app.shelfbound.Shelfbound'[0.04, 0.85] for 0.1 seconds, then drag to Target Application 'app.shelfbound.Shelfbound'[0.04, 0.15] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   126.36s         Wait for app.shelfbound.Shelfbound to idle
+    t =   126.37s         Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   126.47s         Check for interrupting elements affecting "Shelfbound" Application
+    t =   126.56s         Synthesize event
+    t =   126.57s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   126.64s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   126.72s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   126.78s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   126.85s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   128.44s         Wait for app.shelfbound.Shelfbound to idle
+    t =   132.49s     Added attachment named '14 Discover scrolled'
+    t =   132.49s Search tab
+    t =   132.49s     Tap "Search" Button
+    t =   132.49s         Wait for app.shelfbound.Shelfbound to idle
+    t =   132.50s         Find the "Search" Button
+    t =   132.62s         Check for interrupting elements affecting "magnifyingglass" Button
+    t =   132.71s         Synthesize event
+    t =   133.11s         Wait for app.shelfbound.Shelfbound to idle
+    t =   134.94s     Checking existence of `"Search" NavigationBar`
+    t =   135.15s     Checking existence of `"Search" NavigationBar`
+    t =   135.27s     Checking existence of `"Search" NavigationBar`
+    t =   135.40s     Checking existence of `"Search" NavigationBar`
+    t =   135.49s     Checking existence of `"Search" NavigationBar`
+    t =   135.57s     Checking existence of `SearchField (First Match)`
+    t =   135.73s     Find the SearchField (First Match)
+    t =   135.92s     Checking existence of `"Clear text" Button`
+    t =   136.16s     Checking existence of `"Cancel" Button`
+    t =   136.25s     Checking existence of `"Close" Button`
+    t =   137.30s     Waiting 10.0s for "Search" NavigationBar to exist
+    t =   138.32s         Checking `Expect predicate `existsNoRetry == 1` for object "Search" NavigationBar`
+    t =   138.32s             Checking existence of `"Search" NavigationBar`
+    t =   138.37s     Waiting 10.0s for "browse.source" Button to exist
+    t =   139.42s         Checking `Expect predicate `existsNoRetry == 1` for object "browse.source" Button`
+    t =   139.42s             Checking existence of `"browse.source" Button`
+    t =   139.81s     Added attachment named '15 Search tab'
+    t =   139.81s Search all sources
+    t =   139.81s     Tap "Search" Button
+    t =   139.81s         Wait for app.shelfbound.Shelfbound to idle
+    t =   139.82s         Find the "Search" Button
+    t =   139.90s         Check for interrupting elements affecting "magnifyingglass" Button
+    t =   139.98s         Synthesize event
+    t =   140.36s         Wait for app.shelfbound.Shelfbound to idle
+    t =   141.12s     Checking existence of `"Search" NavigationBar`
+    t =   141.29s     Checking existence of `"Search" NavigationBar`
+    t =   141.39s     Checking existence of `"Search" NavigationBar`
+    t =   141.48s     Checking existence of `"Search" NavigationBar`
+    t =   141.56s     Checking existence of `"Search" NavigationBar`
+    t =   141.63s     Checking existence of `SearchField (First Match)`
+    t =   141.90s     Find the SearchField (First Match)
+    t =   142.02s     Checking existence of `"Clear text" Button`
+    t =   142.08s     Checking existence of `"Cancel" Button`
+    t =   142.16s     Checking existence of `"Close" Button`
+    t =   143.23s     Waiting 10.0s for SearchField (First Match) to exist
+    t =   144.29s         Checking `Expect predicate `existsNoRetry == 1` for object SearchField (First Match)`
+    t =   144.29s             Checking existence of `SearchField (First Match)`
+    t =   144.40s     Tap SearchField (First Match)
+    t =   144.40s         Wait for app.shelfbound.Shelfbound to idle
+    t =   144.40s         Find the SearchField (First Match)
+    t =   144.50s         Check for interrupting elements affecting "Search all sources" SearchField
+    t =   144.57s         Synthesize event
+    t =   144.89s         Wait for app.shelfbound.Shelfbound to idle
+    t =   146.05s     Type 'solo leveling
+' into "Search all sources" SearchField
+    t =   146.05s         Wait for app.shelfbound.Shelfbound to idle
+    t =   146.44s         Find the "Search all sources" SearchField
+    t =   146.92s         Check for interrupting elements affecting "Search all sources" SearchField
+    t =   147.00s         Synthesize event
+    t =   147.47s         Wait for app.shelfbound.Shelfbound to idle
+    t =   147.79s     Waiting 45.0s for "work.result" Button to exist
+    t =   148.79s         Checking `Expect predicate `existsNoRetry == 1` for object "work.result" Button`
+    t =   148.79s             Checking existence of `"work.result" Button`
+    t =   152.29s     Added attachment named '16 Search all sources'
+    t =   152.29s Search results by source
+    t =   152.29s     Waiting 5.0s for "By source" Button to exist
+    t =   153.32s         Checking `Expect predicate `existsNoRetry == 1` for object "By source" Button`
+    t =   153.32s             Checking existence of `"By source" Button`
+    t =   153.45s     Tap "By source" Button
+    t =   153.45s         Wait for app.shelfbound.Shelfbound to idle
+    t =   153.46s         Find the "By source" Button
+    t =   153.55s         Check for interrupting elements affecting "By source" Button
+    t =   153.66s         Synthesize event
+    t =   153.99s         Wait for app.shelfbound.Shelfbound to idle
+    t =   156.55s     Added attachment named '17 Search results by source'
+    t =   156.55s Search results merged
+    t =   156.55s     Checking existence of `"Merged" Button`
+    t =   156.68s     Tap "Merged" Button
+    t =   156.68s         Wait for app.shelfbound.Shelfbound to idle
+    t =   156.69s         Find the "Merged" Button
+    t =   156.80s         Check for interrupting elements affecting "Merged" Button
+    t =   156.90s         Synthesize event
+    t =   157.24s         Wait for app.shelfbound.Shelfbound to idle
+    t =   159.75s     Added attachment named '18 Search results merged'
+    t =   159.75s Search results as covers
+    t =   159.75s     Waiting 5.0s for "search.layout" Button to exist
+    t =   160.78s         Checking `Expect predicate `existsNoRetry == 1` for object "search.layout" Button`
+    t =   160.78s             Checking existence of `"search.layout" Button`
+    t =   160.94s     Tap "search.layout" Button
+    t =   160.94s         Wait for app.shelfbound.Shelfbound to idle
+    t =   160.95s         Find the "search.layout" Button
+    t =   161.04s         Check for interrupting elements affecting "search.layout" Button
+    t =   161.17s         Synthesize event
+    t =   161.49s         Wait for app.shelfbound.Shelfbound to idle
+    t =   162.76s     Waiting 10.0s for "work.result" Button to exist
+    t =   163.78s         Checking `Expect predicate `existsNoRetry == 1` for object "work.result" Button`
+    t =   163.79s             Checking existence of `"work.result" Button`
+    t =   166.78s     Added attachment named '19 Search results as covers'
+    t =   166.79s Search results back to the list
+    t =   166.79s     Waiting 5.0s for "search.layout" Button to exist
+    t =   167.85s         Checking `Expect predicate `existsNoRetry == 1` for object "search.layout" Button`
+    t =   167.85s             Checking existence of `"search.layout" Button`
+    t =   168.04s     Tap "search.layout" Button
+    t =   168.04s         Wait for app.shelfbound.Shelfbound to idle
+    t =   168.04s         Find the "search.layout" Button
+    t =   168.15s         Check for interrupting elements affecting "search.layout" Button
+    t =   168.29s         Synthesize event
+    t =   168.61s         Wait for app.shelfbound.Shelfbound to idle
+    t =   170.65s     Checking existence of `"Clear text" Button`
+    t =   170.80s     Tap "Clear text" Button
+    t =   170.80s         Wait for app.shelfbound.Shelfbound to idle
+    t =   170.81s         Find the "Clear text" Button
+    t =   170.90s         Check for interrupting elements affecting "Clear text" Button
+    t =   171.05s         Synthesize event
+    t =   171.38s         Wait for app.shelfbound.Shelfbound to idle
+    t =   171.89s     Checking existence of `"Cancel" Button`
+    t =   172.15s     Checking existence of `"Close" Button`
+    t =   172.41s     Tap "Close" Button
+    t =   172.41s         Wait for app.shelfbound.Shelfbound to idle
+    t =   172.41s         Find the "Close" Button
+    t =   172.54s         Check for interrupting elements affecting "Close" Button
+    t =   172.62s         Synthesize event
+    t =   173.00s         Wait for app.shelfbound.Shelfbound to idle
+    t =   175.14s     Added attachment named '20 Search results back to the list'
+    t =   175.15s WeebCentral: source page before searching
+    t =   175.15s     Tap "Search" Button
+    t =   175.15s         Wait for app.shelfbound.Shelfbound to idle
+    t =   175.15s         Find the "Search" Button
+    t =   175.25s         Check for interrupting elements affecting "magnifyingglass" Button
+    t =   175.34s         Synthesize event
+    t =   175.64s         Wait for app.shelfbound.Shelfbound to idle
+    t =   176.42s     Checking existence of `"Search" NavigationBar`
+    t =   176.54s     Checking existence of `"Search" NavigationBar`
+    t =   176.66s     Checking existence of `"Search" NavigationBar`
+    t =   176.73s     Checking existence of `"Search" NavigationBar`
+    t =   176.81s     Checking existence of `"Search" NavigationBar`
+    t =   176.91s     Checking existence of `SearchField (First Match)`
+    t =   177.17s     Find the SearchField (First Match)
+    t =   177.26s     Checking existence of `"Clear text" Button`
+    t =   177.39s     Checking existence of `"Cancel" Button`
+    t =   177.45s     Checking existence of `"Close" Button`
+    t =   178.52s     Checking existence of `"browse.source" Button`
+    t =   178.89s     Find the "browse.source" Button
+    t =   179.11s     Checking existence of `"browse.source" Button`
+    t =   179.30s     Find the "browse.source" Button
+    t =   179.46s     Checking existence of `"browse.source" Button`
+    t =   179.61s     Find the "browse.source" Button
+    t =   179.78s     Checking existence of `"browse.source" Button`
+    t =   179.96s     Find the "browse.source" Button
+    t =   180.19s     Checking existence of `"browse.source" Button`
+    t =   180.35s     Find the "browse.source" Button
+    t =   180.54s     Checking existence of `"browse.source" Button`
+    t =   180.72s     Find the "browse.source" Button
+    t =   180.90s     Checking existence of `"browse.source" Button`
+    t =   181.06s     Find the "browse.source" Button
+    t =   181.20s     Checking existence of `"browse.source" Button`
+    t =   181.31s     Find the "browse.source" Button
+    t =   181.45s     Checking existence of `"browse.source" Button`
+    t =   181.58s     Find the "browse.source" Button
+    t =   181.74s     Checking existence of `"browse.source" Button`
+    t =   181.89s     Find the "browse.source" Button
+    t =   182.09s     Waiting 20.0s for "browse.source" Button to exist
+    t =   183.13s         Checking `Expect predicate `existsNoRetry == 1` for object "browse.source" Button`
+    t =   183.13s             Checking existence of `"browse.source" Button`
+    t =   183.26s     Tap "browse.source" Button
+    t =   183.26s         Wait for app.shelfbound.Shelfbound to idle
+    t =   183.27s         Find the "browse.source" Button
+    t =   183.37s         Check for interrupting elements affecting "browse.source" Button
+    t =   183.45s         Synthesize event
+    t =   183.77s         Wait for app.shelfbound.Shelfbound to idle
+    t =   184.06s     Waiting 10.0s for SearchField (First Match) to exist
+    t =   185.13s         Checking `Expect predicate `existsNoRetry == 1` for object SearchField (First Match)`
+    t =   185.13s             Checking existence of `SearchField (First Match)`
+    t =   191.56s     Added attachment named '21 WeebCentral: source page before searching'
+    t =   191.57s WeebCentral: search results
+    t =   191.57s     Tap SearchField (First Match)
+    t =   191.57s         Wait for app.shelfbound.Shelfbound to idle
+    t =   191.58s         Find the SearchField (First Match)
+    t =   191.77s         Check for interrupting elements affecting "Search" SearchField
+    t =   191.98s         Synthesize event
+    t =   192.38s         Wait for app.shelfbound.Shelfbound to idle
+    t =   193.27s     Type 'solo leveling
+' into "Search" SearchField
+    t =   193.29s         Wait for app.shelfbound.Shelfbound to idle
+    t =   193.98s         Find the "Search" SearchField
+    t =   195.55s         Check for interrupting elements affecting "Search" SearchField
+    t =   195.84s         Synthesize event
+    t =   196.37s         Wait for app.shelfbound.Shelfbound to idle
+    t =   197.42s     Waiting 45.0s for "work.result" Button to exist
+    t =   198.43s         Checking `Expect predicate `existsNoRetry == 1` for object "work.result" Button`
+    t =   198.43s             Checking existence of `"work.result" Button`
+    t =   201.21s     Added attachment named '22 WeebCentral: search results'
+    t =   201.22s WeebCentral: filter chip menu
+    t =   201.22s     Waiting 5.0s for "filter.chip" Button to exist
+    t =   202.23s         Checking `Expect predicate `existsNoRetry == 1` for object "filter.chip" Button`
+    t =   202.24s             Checking existence of `"filter.chip" Button`
+    t =   202.50s     Tap "filter.chip" Button
+    t =   202.50s         Wait for app.shelfbound.Shelfbound to idle
+    t =   202.51s         Find the "filter.chip" Button
+    t =   202.72s         Check for interrupting elements affecting "filter.chip" Button
+    t =   202.83s         Synthesize event
+    t =   203.16s         Wait for app.shelfbound.Shelfbound to idle
+    t =   205.39s     Added attachment named '23 WeebCentral: filter chip menu'
+    t =   205.40s WeebCentral: filter chip chosen, results reloading
+    t =   205.40s     Get number of matches for: Descendants matching type Button
+    t =   205.56s     Tap Button (Element at index 1)
+    t =   205.56s         Wait for app.shelfbound.Shelfbound to idle
+    t =   205.57s         Find the Button (Element at index 1)
+    t =   205.73s         Check for interrupting elements affecting "Popularity" Button
+    t =   205.87s         Synthesize event
+    t =   206.21s         Wait for app.shelfbound.Shelfbound to idle
+    t =   208.22s     Added attachment named '24 WeebCentral: filter chip chosen, results reloading'
+    t =   208.22s WeebCentral: results after the filter change
+    t =   208.23s     Waiting 45.0s for "work.result" Button to exist
+    t =   209.27s         Checking `Expect predicate `existsNoRetry == 1` for object "work.result" Button`
+    t =   209.27s             Checking existence of `"work.result" Button`
+    t =   211.93s     Added attachment named '25 WeebCentral: results after the filter change'
+    t =   211.93s WeebCentral: all filters screen
+    t =   211.93s     Waiting 5.0s for "filters.all" Button to exist
+    t =   212.96s         Checking `Expect predicate `existsNoRetry == 1` for object "filters.all" Button`
+    t =   212.96s             Checking existence of `"filters.all" Button`
+    t =   213.14s     Tap "filters.all" Button
+    t =   213.14s         Wait for app.shelfbound.Shelfbound to idle
+    t =   213.15s         Find the "filters.all" Button
+    t =   213.30s         Check for interrupting elements affecting "filters.all" Button
+    t =   213.42s         Synthesize event
+    t =   213.77s         Wait for app.shelfbound.Shelfbound to idle
+    t =   215.13s     Waiting 5.0s for "filters.apply" Button to exist
+    t =   216.17s         Checking `Expect predicate `existsNoRetry == 1` for object "filters.apply" Button`
+    t =   216.17s             Checking existence of `"filters.apply" Button`
+    t =   217.86s     Added attachment named '26 WeebCentral: all filters screen'
+    t =   217.86s WeebCentral: all filters screen scrolled
+    t =   217.86s     Swipe up Target Application 'app.shelfbound.Shelfbound'
+    t =   217.86s         Wait for app.shelfbound.Shelfbound to idle
+    t =   217.87s         Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   218.07s         Check for interrupting elements affecting "Shelfbound" Application
+    t =   218.30s         Synthesize event
+    t =   218.73s         Wait for app.shelfbound.Shelfbound to idle
+    t =   220.53s     Tap "Cancel" Button
+    t =   220.53s         Wait for app.shelfbound.Shelfbound to idle
+    t =   220.77s         Find the "Cancel" Button
+    t =   221.03s         Check for interrupting elements affecting "Cancel" Button
+    t =   221.17s         Synthesize event
+    t =   221.53s         Wait for app.shelfbound.Shelfbound to idle
+    t =   223.75s     Added attachment named '27 WeebCentral: all filters screen scrolled'
+    t =   223.75s WeebCentral: series page
+    t =   223.75s     Tap "work.result" Button
+    t =   223.75s         Wait for app.shelfbound.Shelfbound to idle
+    t =   223.76s         Find the "work.result" Button
+    t =   224.27s         Check for interrupting elements affecting "work.result" Button
+    t =   224.37s         Synthesize event
+    t =   224.68s         Wait for app.shelfbound.Shelfbound to idle
+    t =   225.35s     Waiting 45.0s for Button (First Match) to exist
+    t =   226.40s         Checking `Expect predicate `existsNoRetry == 1` for object Button (First Match)`
+    t =   226.40s             Checking existence of `Button (First Match)`
+    t =   227.40s             Capturing element debug description
+    t =   228.35s         Checking `Expect predicate `existsNoRetry == 1` for object Button (First Match)`
+    t =   228.35s             Checking existence of `Button (First Match)`
+    t =   228.86s             Capturing element debug description
+    t =   229.39s         Checking `Expect predicate `existsNoRetry == 1` for object Button (First Match)`
+    t =   229.39s             Checking existence of `Button (First Match)`
+    t =   231.98s     Added attachment named '28 WeebCentral: series page'
+    t =   231.98s WeebCentral: series chapters
+    t =   231.99s     Swipe up Target Application 'app.shelfbound.Shelfbound'
+    t =   231.99s         Wait for app.shelfbound.Shelfbound to idle
+    t =   232.00s         Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   232.12s         Check for interrupting elements affecting "Shelfbound" Application
+    t =   232.25s         Synthesize event
+    t =   232.71s         Wait for app.shelfbound.Shelfbound to idle
+    t =   236.02s     Added attachment named '29 WeebCentral: series chapters'
+    t =   236.02s WeebCentral: reader
+    t =   236.02s     Swipe down Target Application 'app.shelfbound.Shelfbound'
+    t =   236.03s         Wait for app.shelfbound.Shelfbound to idle
+    t =   236.09s         Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   236.27s         Check for interrupting elements affecting "Shelfbound" Application
+    t =   236.43s         Synthesize event
+    t =   236.88s         Wait for app.shelfbound.Shelfbound to idle
+    t =   239.67s     Waiting 5.0s for Button (First Match) to exist
+    t =   240.71s         Checking `Expect predicate `existsNoRetry == 1` for object Button (First Match)`
+    t =   240.71s             Checking existence of `Button (First Match)`
+    t =   240.89s     Tap Button (First Match)
+    t =   240.89s         Wait for app.shelfbound.Shelfbound to idle
+    t =   240.89s         Find the Button (First Match)
+    t =   241.01s         Check for interrupting elements affecting "Start reading" Button
+    t =   241.12s         Synthesize event
+    t =   241.43s         Wait for app.shelfbound.Shelfbound to idle
+    t =   253.84s     Added attachment named '30 WeebCentral: reader'
+    t =   253.85s WeebCentral: reader controls
+    t =   253.85s     Tap Target Application 'app.shelfbound.Shelfbound'[0.50, 0.50]
+    t =   253.85s         Wait for app.shelfbound.Shelfbound to idle
+    t =   253.87s         Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   254.06s         Check for interrupting elements affecting "Shelfbound" Application
+    t =   254.17s         Synthesize event
+    t =   254.18s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   254.25s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   254.32s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   254.67s         Wait for app.shelfbound.Shelfbound to idle
+    t =   255.97s     Added attachment named '31 WeebCentral: reader controls'
+    t =   255.97s WeebCentral: reader scrolled
+    t =   255.97s     Swipe up Target Application 'app.shelfbound.Shelfbound'
+    t =   255.97s         Wait for app.shelfbound.Shelfbound to idle
+    t =   255.98s         Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   256.15s         Check for interrupting elements affecting "Shelfbound" Application
+    t =   256.31s         Synthesize event
+    t =   256.77s         Wait for app.shelfbound.Shelfbound to idle
+    t =   262.03s     Checking existence of `"Close reader" Button`
+    t =   262.16s     Tap "Close reader" Button
+    t =   262.16s         Wait for app.shelfbound.Shelfbound to idle
+    t =   262.16s         Find the "Close reader" Button
+    t =   262.27s         Check for interrupting elements affecting "chevron.down" Button
+    t =   262.39s         Synthesize event
+    t =   262.69s         Wait for app.shelfbound.Shelfbound to idle
+    t =   264.33s     Added attachment named '32 WeebCentral: reader scrolled'
+    t =   264.34s WeebCentral: tapping a tag searches for it
+    t =   264.34s     Checking existence of `"work.tag" Button`
+    t =   264.52s     Find the "work.tag" Button
+    t =   264.72s     Checking existence of `"work.tag" Button`
+    t =   264.88s     Find the "work.tag" Button
+    t =   265.10s     Tap "work.tag" Button
+    t =   265.10s         Wait for app.shelfbound.Shelfbound to idle
+    t =   265.10s         Find the "work.tag" Button
+    t =   265.26s         Check for interrupting elements affecting "work.tag" Button
+    t =   265.37s         Synthesize event
+    t =   265.69s         Wait for app.shelfbound.Shelfbound to idle
+    t =   266.32s     Waiting 45.0s for "work.result" Button to exist
+    t =   267.37s         Checking `Expect predicate `existsNoRetry == 1` for object "work.result" Button`
+    t =   267.37s             Checking existence of `"work.result" Button`
+    t =   267.57s             Capturing element debug description
+    t =   268.39s         Checking `Expect predicate `existsNoRetry == 1` for object "work.result" Button`
+    t =   268.39s             Checking existence of `"work.result" Button`
+    t =   270.58s     Checking existence of `Button (Element at index 0)`
+    t =   270.67s     Tap Button (Element at index 0)
+    t =   270.67s         Wait for app.shelfbound.Shelfbound to idle
+    t =   270.67s         Find the Button (Element at index 0)
+    t =   270.77s         Check for interrupting elements affecting "BackButton" Button
+    t =   270.88s         Synthesize event
+    t =   271.20s         Wait for app.shelfbound.Shelfbound to idle
+    t =   274.69s     Added attachment named '33 WeebCentral: tapping a tag searches for it'
+    t =   274.69s WeebCentral: multi-select menu after one tap
+    t =   274.69s     Waiting 2.0s for "filter.chip" Button to exist
+    t =   275.71s         Checking `Expect predicate `existsNoRetry == 1` for object "filter.chip" Button`
+    t =   275.71s             Checking existence of `"filter.chip" Button`
+    t =   275.96s             Capturing element debug description
+    t =   276.69s         Checking `Expect predicate `existsNoRetry == 1` for object "filter.chip" Button`
+    t =   276.69s             Checking existence of `"filter.chip" Button`
+    t =   276.95s             Capturing element debug description
+    t =   276.96s         Checking existence of `"filter.chip" Button`
+    t =   277.37s     Collecting debug information to assist test failure triage
+    t =   277.37s         Requesting snapshot of accessibility hierarchy for app with pid 15871
+    t =   277.53s     Checking existence of `Button (Element at index 0)`
+    t =   277.60s     Tap Button (Element at index 0)
+    t =   277.60s         Wait for app.shelfbound.Shelfbound to idle
+    t =   277.60s         Find the Button (Element at index 0)
+    t =   277.71s         Check for interrupting elements affecting "BackButton" Button
+    t =   277.80s         Synthesize event
+    t =   278.13s         Wait for app.shelfbound.Shelfbound to idle
+    t =   279.87s     Checking existence of `"filter.chip" Button`
+    t =   279.99s     Find the Window (First Match)
+    t =   280.00s     Find the "filter.chip" Button
+    t =   280.11s     Find the "filter.chip" Button
+    t =   280.21s     Find the Window (First Match)
+    t =   280.22s     Press Target Application 'app.shelfbound.Shelfbound'[0.80, 0.17] for 0.1 seconds, then drag to Target Application 'app.shelfbound.Shelfbound'[0.20, 0.17] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   280.22s         Wait for app.shelfbound.Shelfbound to idle
+    t =   280.22s         Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   280.29s         Check for interrupting elements affecting "Shelfbound" Application
+    t =   280.34s         Synthesize event
+    t =   280.34s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   280.39s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   280.42s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   280.46s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   280.53s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   281.35s         Wait for app.shelfbound.Shelfbound to idle
+    t =   283.96s     Find the "filter.chip" Button
+    t =   284.06s     Find the "filter.chip" Button
+    t =   284.15s     Find the "filter.chip" Button
+    t =   284.24s     Find the "filter.chip" Button
+    t =   284.33s     Find the "filter.chip" Button
+    t =   284.47s     Tap Target Application 'app.shelfbound.Shelfbound'[0.00, 0.00] -> (211.7, 146.7)
+    t =   284.47s         Wait for app.shelfbound.Shelfbound to idle
+    t =   284.48s         Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   284.51s         Check for interrupting elements affecting "Shelfbound" Application
+    t =   284.56s         Synthesize event
+    t =   284.56s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   284.59s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   284.63s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   284.94s         Wait for app.shelfbound.Shelfbound to idle
+    t =   287.24s     Get number of matches for: Descendants matching type Button
+    t =   287.32s     Tap Button (Element at index 0)
+    t =   287.32s         Wait for app.shelfbound.Shelfbound to idle
+    t =   287.32s         Find the Button (Element at index 0)
+    t =   287.39s         Check for interrupting elements affecting "Manga" Button
+    t =   287.54s         Synthesize event
+    t =   287.87s         Wait for app.shelfbound.Shelfbound to idle
+    t =   290.08s     Added attachment named '34 WeebCentral: multi-select menu after one tap'
+    t =   290.08s WeebCentral: multi-select menu closed
+    t =   290.08s     Tap Target Application 'app.shelfbound.Shelfbound'[0.50, 0.05]
+    t =   290.08s         Wait for app.shelfbound.Shelfbound to idle
+    t =   290.09s         Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   290.15s         Check for interrupting elements affecting "Shelfbound" Application
+    t =   290.18s         Synthesize event
+    t =   290.19s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   290.21s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   290.25s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   290.56s         Wait for app.shelfbound.Shelfbound to idle
+    t =   293.74s     Added attachment named '35 WeebCentral: multi-select menu closed'
+    t =   293.74s AO3: source page before searching
+    t =   293.74s     Tap "Search" Button
+    t =   293.74s         Wait for app.shelfbound.Shelfbound to idle
+    t =   293.74s         Find the "Search" Button
+    t =   293.79s         Check for interrupting elements affecting "magnifyingglass" Button
+    t =   293.86s         Synthesize event
+    t =   293.88s             Scroll element to visible
+    t =   293.90s             Find the "magnifyingglass" Button
+    t =   293.97s             Computed hit point {-1, -1} after scrolling to visible
+    t =   294.28s         Wait for app.shelfbound.Shelfbound to idle
+    t =   295.91s     Checking existence of `"Search" NavigationBar`
+    t =   296.02s     Checking existence of `Button (Element at index 0)`
+    t =   296.14s     Tap Button (Element at index 0)
+    t =   296.14s         Wait for app.shelfbound.Shelfbound to idle
+    t =   296.15s         Find the Button (Element at index 0)
+    t =   296.20s         Check for interrupting elements affecting "Close" Button
+    t =   296.27s         Synthesize event
+    t =   296.59s         Wait for app.shelfbound.Shelfbound to idle
+    t =   298.45s     Checking existence of `"Search" NavigationBar`
+    t =   298.55s     Checking existence of `Button (Element at index 0)`
+    t =   298.63s     Tap Button (Element at index 0)
+    t =   298.63s         Wait for app.shelfbound.Shelfbound to idle
+    t =   298.63s         Find the Button (Element at index 0)
+    t =   298.69s         Check for interrupting elements affecting "BackButton" Button
+    t =   298.75s         Synthesize event
+    t =   299.11s         Wait for app.shelfbound.Shelfbound to idle
+    t =   300.73s     Checking existence of `"Search" NavigationBar`
+    t =   300.79s     Checking existence of `"Search" NavigationBar`
+    t =   300.83s     Checking existence of `"Search" NavigationBar`
+    t =   300.87s     Checking existence of `SearchField (First Match)`
+    t =   300.92s     Find the SearchField (First Match)
+    t =   300.99s     Checking existence of `"Clear text" Button`
+    t =   301.06s     Checking existence of `"Cancel" Button`
+    t =   301.11s     Checking existence of `"Close" Button`
+    t =   302.17s     Checking existence of `"browse.source" Button`
+    t =   302.34s     Find the "browse.source" Button
+    t =   302.52s     Checking existence of `"browse.source" Button`
+    t =   302.84s     Find the "browse.source" Button
+    t =   303.11s     Checking existence of `"browse.source" Button`
+    t =   303.41s     Find the "browse.source" Button
+    t =   303.62s     Checking existence of `"browse.source" Button`
+    t =   303.79s     Find the "browse.source" Button
+    t =   303.91s     Checking existence of `"browse.source" Button`
+    t =   304.08s     Find the "browse.source" Button
+    t =   304.28s     Checking existence of `"browse.source" Button`
+    t =   304.42s     Find the "browse.source" Button
+    t =   304.58s     Checking existence of `"browse.source" Button`
+    t =   304.69s     Find the "browse.source" Button
+    t =   304.89s     Checking existence of `"browse.source" Button`
+    t =   305.09s     Find the "browse.source" Button
+    t =   305.22s     Checking existence of `"browse.source" Button`
+    t =   305.42s     Find the "browse.source" Button
+    t =   305.69s     Checking existence of `"browse.source" Button`
+    t =   305.83s     Find the "browse.source" Button
+    t =   306.07s     Waiting 20.0s for "browse.source" Button to exist
+    t =   307.08s         Checking `Expect predicate `existsNoRetry == 1` for object "browse.source" Button`
+    t =   307.08s             Checking existence of `"browse.source" Button`
+    t =   307.34s     Tap "browse.source" Button
+    t =   307.34s         Wait for app.shelfbound.Shelfbound to idle
+    t =   307.34s         Find the "browse.source" Button
+    t =   307.61s         Check for interrupting elements affecting "browse.source" Button
+    t =   307.72s         Synthesize event
+    t =   308.08s         Wait for app.shelfbound.Shelfbound to idle
+    t =   309.15s     Waiting 10.0s for SearchField (First Match) to exist
+    t =   310.19s         Checking `Expect predicate `existsNoRetry == 1` for object SearchField (First Match)`
+    t =   310.19s             Checking existence of `SearchField (First Match)`
+    t =   316.69s     Added attachment named '36 AO3: source page before searching'
+    t =   316.69s AO3: search (site unreachable from CI, not checked)
+    t =   316.69s     Tap SearchField (First Match)
+    t =   316.69s         Wait for app.shelfbound.Shelfbound to idle
+    t =   316.70s         Find the SearchField (First Match)
+    t =   316.78s         Check for interrupting elements affecting "Search" SearchField
+    t =   316.97s         Synthesize event
+    t =   317.35s         Wait for app.shelfbound.Shelfbound to idle
+    t =   317.91s     Type 'coffee shop
+' into "Search" SearchField
+    t =   317.91s         Wait for app.shelfbound.Shelfbound to idle
+    t =   318.67s         Find the "Search" SearchField
+    t =   319.14s         Check for interrupting elements affecting "Search" SearchField
+    t =   319.26s         Synthesize event
+    t =   319.71s         Wait for app.shelfbound.Shelfbound to idle
+    t =   328.87s     Added attachment named '37 AO3: search (site unreachable from CI, not checked)'
+    t =   328.88s AO3: filter chip menu
+    t =   328.88s     Waiting 5.0s for "filter.chip" Button to exist
+    t =   329.88s         Checking `Expect predicate `existsNoRetry == 1` for object "filter.chip" Button`
+    t =   329.89s             Checking existence of `"filter.chip" Button`
+    t =   330.18s     Tap "filter.chip" Button
+    t =   330.18s         Wait for app.shelfbound.Shelfbound to idle
+    t =   330.18s         Find the "filter.chip" Button
+    t =   330.33s         Check for interrupting elements affecting "filter.chip" Button
+    t =   330.43s         Synthesize event
+    t =   330.76s         Wait for app.shelfbound.Shelfbound to idle
+    t =   333.55s     Added attachment named '38 AO3: filter chip menu'
+    t =   333.55s AO3: filter chip chosen, results reloading
+    t =   333.55s     Get number of matches for: Descendants matching type Button
+    t =   333.65s     Tap Button (Element at index 1)
+    t =   333.65s         Wait for app.shelfbound.Shelfbound to idle
+    t =   333.65s         Find the Button (Element at index 1)
+    t =   333.72s         Check for interrupting elements affecting "Kudos" Button
+    t =   333.82s         Synthesize event
+    t =   334.24s         Wait for app.shelfbound.Shelfbound to idle
+    t =   336.11s     Added attachment named '39 AO3: filter chip chosen, results reloading'
+    t =   336.11s AO3: all filters screen
+    t =   336.11s     Waiting 5.0s for "filters.all" Button to exist
+    t =   337.14s         Checking `Expect predicate `existsNoRetry == 1` for object "filters.all" Button`
+    t =   337.14s             Checking existence of `"filters.all" Button`
+    t =   337.27s     Tap "filters.all" Button
+    t =   337.27s         Wait for app.shelfbound.Shelfbound to idle
+    t =   337.28s         Find the "filters.all" Button
+    t =   337.38s         Check for interrupting elements affecting "filters.all" Button
+    t =   337.48s         Synthesize event
+    t =   337.80s         Wait for app.shelfbound.Shelfbound to idle
+    t =   338.75s     Waiting 5.0s for "filters.apply" Button to exist
+    t =   339.81s         Checking `Expect predicate `existsNoRetry == 1` for object "filters.apply" Button`
+    t =   339.81s             Checking existence of `"filters.apply" Button`
+    t =   341.57s     Added attachment named '40 AO3: all filters screen'
+    t =   341.57s AO3: all filters screen scrolled
+    t =   341.57s     Swipe up Target Application 'app.shelfbound.Shelfbound'
+    t =   341.57s         Wait for app.shelfbound.Shelfbound to idle
+    t =   341.58s         Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   341.74s         Check for interrupting elements affecting "Shelfbound" Application
+    t =   341.88s         Synthesize event
+    t =   342.33s         Wait for app.shelfbound.Shelfbound to idle
+    t =   345.55s     Tap "Cancel" Button
+    t =   345.55s         Wait for app.shelfbound.Shelfbound to idle
+    t =   345.78s         Find the "Cancel" Button
+    t =   345.90s         Check for interrupting elements affecting "Cancel" Button
+    t =   346.10s         Synthesize event
+    t =   346.44s         Wait for app.shelfbound.Shelfbound to idle
+    t =   348.41s     Added attachment named '41 AO3: all filters screen scrolled'
+    t =   348.41s AO3: multi-select menu after one tap
+    t =   348.41s     Waiting 2.0s for "filter.chip" Button to exist
+    t =   349.44s         Checking `Expect predicate `existsNoRetry == 1` for object "filter.chip" Button`
+    t =   349.45s             Checking existence of `"filter.chip" Button`
+    t =   349.57s     Checking existence of `"filter.chip" Button`
+    t =   349.92s     Added attachment named '42 AO3: multi-select menu after one tap'
+    t =   349.93s AO3: multi-select menu closed
+    t =   349.93s     Tap Target Application 'app.shelfbound.Shelfbound'[0.50, 0.05]
+    t =   349.93s         Wait for app.shelfbound.Shelfbound to idle
+    t =   349.93s         Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   350.00s         Check for interrupting elements affecting "Shelfbound" Application
+    t =   350.08s         Synthesize event
+    t =   350.08s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   350.16s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   350.26s             Find the Target Application 'app.shelfbound.Shelfbound'
+    t =   350.60s         Wait for app.shelfbound.Shelfbound to idle
+    t =   353.80s     Added attachment named '43 AO3: multi-select menu closed'
+    t =   353.81s Library after reading
+    t =   353.81s     Tap "Library" Button
+    t =   353.81s         Wait for app.shelfbound.Shelfbound to idle
+    t =   353.82s         Find the "Library" Button
+    t =   353.93s         Check for interrupting elements affecting "bookmark" Button
+    t =   353.99s         Synthesize event
+    t =   354.34s         Wait for app.shelfbound.Shelfbound to idle
+    t =   357.66s     Added attachment named '44 Library after reading'
+    t =   357.67s History
+    t =   357.67s     Tap "History" Button
+    t =   357.67s         Wait for app.shelfbound.Shelfbound to idle
+    t =   357.67s         Find the "History" Button
+    t =   357.74s         Check for interrupting elements affecting "clock" Button
+    t =   357.79s         Synthesize event
+    t =   358.10s         Wait for app.shelfbound.Shelfbound to idle
+    t =   359.91s     Waiting 10.0s for "History" NavigationBar to exist
+    t =   360.95s         Checking `Expect predicate `existsNoRetry == 1` for object "History" NavigationBar`
+    t =   360.95s             Checking existence of `"History" NavigationBar`
+    t =   363.33s     Added attachment named '45 History'
+    t =   363.34s Tear Down
+Test Case '-[ShelfboundUITests.WalkthroughUITests testWalkthrough]' passed (364.179 seconds).
+Test Suite 'WalkthroughUITests' passed at 2026-11-27 06:52:49.358.
+	 Executed 1 test, with 0 failures (0 unexpected) in 364.179 (364.183) seconds
+Test Suite 'ShelfboundUITests.xctest' passed at 2026-11-27 06:52:49.358.
+	 Executed 1 test, with 0 failures (0 unexpected) in 364.179 (364.184) seconds
+Test Suite 'All tests' passed at 2026-11-27 06:52:49.358.
+	 Executed 1 test, with 0 failures (0 unexpected) in 364.179 (364.185) seconds
+2026-11-27 06:52:52.199 xcodebuild[13497:41600] [MT] IDETestOperationsObserverDebug: 404.125 elapsed -- Testing started completed.
+2026-11-27 06:52:52.200 xcodebuild[13497:41600] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-11-27 06:52:52.200 xcodebuild[13497:41600] [MT] IDETestOperationsObserverDebug: 404.125 sec, +404.125 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/runner/work/_temp/Walkthrough.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
