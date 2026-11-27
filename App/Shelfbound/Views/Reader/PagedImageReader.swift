@@ -2,8 +2,9 @@ import ShelfCore
 import SwiftUI
 import UIKit
 
-/// Paged manga reader: one page per screen, right to left or left to right, with pinch
-/// and double-tap zoom, tap zones, and an end-of-chapter card after the last page.
+/// Paged manga reader: one page per screen (or two side by side when the screen is wider
+/// than tall), right to left or left to right, with pinch and double-tap zoom, tap zones,
+/// and an end-of-chapter card after the last page.
 @MainActor
 struct PagedImageReader: UIViewControllerRepresentable {
     let chapterID: String
@@ -11,6 +12,10 @@ struct PagedImageReader: UIViewControllerRepresentable {
     let startPage: Int
     let rightToLeft: Bool
     var panelByPanel = false
+    /// Two pages side by side when the screen is wider than tall.
+    var spread = true
+    /// In a spread, the first page stands alone, as a cover does.
+    var coverAlone = true
     let endTitle: String
     let nextTitle: String?
     @Binding var page: Int
@@ -22,6 +27,7 @@ struct PagedImageReader: UIViewControllerRepresentable {
         let controller = PagedImageReaderController()
         controller.callbacks = callbacks(context)
         controller.panelByPanel = panelByPanel
+        controller.setSpread(allowed: spread, coverAlone: coverAlone)
         controller.load(chapterID: chapterID, pages: pages, start: startPage, rightToLeft: rightToLeft, endTitle: endTitle, nextTitle: nextTitle)
         return controller
     }
@@ -29,10 +35,12 @@ struct PagedImageReader: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: PagedImageReaderController, context: Context) {
         controller.callbacks = callbacks(context)
         if controller.chapterID != chapterID {
+            controller.setSpread(allowed: spread, coverAlone: coverAlone)
             controller.load(chapterID: chapterID, pages: pages, start: startPage, rightToLeft: rightToLeft, endTitle: endTitle, nextTitle: nextTitle)
         } else {
             controller.setRightToLeft(rightToLeft)
             controller.setPanelByPanel(panelByPanel)
+            controller.setSpread(allowed: spread, coverAlone: coverAlone)
             controller.updateEnd(title: endTitle, next: nextTitle)
             if controller.currentIndex != page { controller.go(to: page, animated: false) }
         }
@@ -57,8 +65,17 @@ final class PagedImageReaderController: UIViewController, UIPageViewControllerDa
 
     var callbacks = Callbacks()
     private(set) var chapterID = ""
+    /// The page the reader is on, counting from 0; `pages.count` is the end-of-chapter card.
+    /// With two pages on screen it's the later one, so finishing the pair counts both as read.
     private(set) var currentIndex = 0
     private var pages: [ImagePage] = []
+    /// What each swipe shows: one page, or two side by side. The last is the end card.
+    private var screens: [[Int]] = []
+    private var currentScreen = 0
+    private var spreadAllowed = true
+    private var coverAlone = true
+    /// Whether pages are paired right now (allowed, and the screen is wider than tall).
+    private var spreadActive = false
     private var rightToLeft = true
     /// Zoom from panel to panel; taps move between panels before pages.
     var panelByPanel = false
@@ -81,6 +98,12 @@ final class PagedImageReaderController: UIViewController, UIPageViewControllerDa
         pageController.didMove(toParent: self)
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Turning the device switches between one page and two.
+        if wantsSpread != spreadActive { rebuildScreens() }
+    }
+
     func load(chapterID: String, pages: [ImagePage], start: Int, rightToLeft: Bool, endTitle: String, nextTitle: String?) {
         loadViewIfNeeded()
         self.chapterID = chapterID
@@ -89,9 +112,7 @@ final class PagedImageReaderController: UIViewController, UIPageViewControllerDa
         self.endTitle = endTitle
         self.nextTitle = nextTitle
         currentIndex = min(max(0, start), pages.count)
-        if let vc = controller(at: currentIndex) {
-            pageController.setViewControllers([vc], direction: .forward, animated: false)
-        }
+        rebuildScreens()
         prefetch(around: currentIndex)
     }
 
@@ -99,7 +120,62 @@ final class PagedImageReaderController: UIViewController, UIPageViewControllerDa
         guard value != rightToLeft else { return }
         rightToLeft = value
         // Rebuild so swipe directions match.
-        if let vc = controller(at: currentIndex) {
+        showCurrentScreen()
+    }
+
+    // MARK: Screens
+
+    private var wantsSpread: Bool {
+        spreadAllowed && !panelByPanel && view.bounds.width > view.bounds.height && view.bounds.width >= 560
+    }
+
+    func setSpread(allowed: Bool, coverAlone: Bool) {
+        guard allowed != spreadAllowed || coverAlone != self.coverAlone else { return }
+        spreadAllowed = allowed
+        self.coverAlone = coverAlone
+        if isViewLoaded, !chapterID.isEmpty { rebuildScreens() }
+    }
+
+    /// A page wider than tall is a double-page scan already, so it gets a screen to itself.
+    /// Only known for pages loaded before; the others are taken to be ordinary pages.
+    private func isWide(_ index: Int) -> Bool {
+        (ImageLoader.shared.knownAspect(pages[index].url) ?? 1.4) < 1
+    }
+
+    /// Works out what each screen shows and puts the reader back on the page it was on.
+    private func rebuildScreens() {
+        spreadActive = wantsSpread
+        var out: [[Int]] = []
+        if spreadActive {
+            var i = 0
+            if coverAlone, !pages.isEmpty {
+                out.append([0])
+                i = 1
+            }
+            while i < pages.count {
+                if i + 1 < pages.count, !isWide(i), !isWide(i + 1) {
+                    out.append([i, i + 1])
+                    i += 2
+                } else {
+                    out.append([i])
+                    i += 1
+                }
+            }
+        } else {
+            out = pages.indices.map { [$0] }
+        }
+        out.append([pages.count])
+        screens = out
+        currentScreen = screen(holding: currentIndex)
+        showCurrentScreen()
+    }
+
+    private func screen(holding index: Int) -> Int {
+        screens.firstIndex { $0.contains(index) } ?? max(0, screens.count - 1)
+    }
+
+    private func showCurrentScreen() {
+        if let vc = controller(at: currentScreen) {
             pageController.setViewControllers([vc], direction: .forward, animated: false)
         }
     }
@@ -137,56 +213,72 @@ final class PagedImageReaderController: UIViewController, UIPageViewControllerDa
     func setPanelByPanel(_ value: Bool) {
         guard value != panelByPanel else { return }
         panelByPanel = value
-        (pageController.viewControllers?.first as? ZoomingPageController)?.setGuided(value, rightToLeft: rightToLeft)
+        if wantsSpread != spreadActive {
+            // Panel by panel reads one page at a time.
+            rebuildScreens()
+        } else {
+            (pageController.viewControllers?.first as? ZoomingPageController)?.setGuided(value, rightToLeft: rightToLeft)
+        }
     }
 
     func updateEnd(title: String, next: String?) {
         guard title != endTitle || next != nextTitle else { return }
         endTitle = title
         nextTitle = next
-        if currentIndex == pages.count, let vc = controller(at: currentIndex) {
-            pageController.setViewControllers([vc], direction: .forward, animated: false)
-        }
+        if currentScreen == screens.count - 1 { showCurrentScreen() }
     }
 
+    /// Jumps to a page (from the slider, or where the reader left off).
     func go(to index: Int, animated: Bool) {
         let target = min(max(0, index), pages.count)
-        guard target != currentIndex, let vc = controller(at: target) else { return }
-        let forward = target > currentIndex
-        let direction: UIPageViewController.NavigationDirection = (forward != rightToLeft) ? .forward : .reverse
-        currentIndex = target
-        pageController.setViewControllers([vc], direction: direction, animated: animated)
-        prefetch(around: target)
-        callbacks.pageChanged(target)
+        let wanted = screen(holding: target)
+        guard wanted != currentScreen else {
+            // The other page of the pair already on screen.
+            currentIndex = target
+            return
+        }
+        show(screen: wanted, reporting: target, animated: animated)
     }
 
-    /// Next/previous page in reading order, or the next/previous chapter at the edges.
+    private func show(screen wanted: Int, reporting index: Int, animated: Bool) {
+        guard let vc = controller(at: wanted) else { return }
+        let forward = wanted > currentScreen
+        let direction: UIPageViewController.NavigationDirection = (forward != rightToLeft) ? .forward : .reverse
+        currentScreen = wanted
+        currentIndex = index
+        pageController.setViewControllers([vc], direction: direction, animated: animated)
+        prefetch(around: index)
+        callbacks.pageChanged(index)
+    }
+
+    /// Next/previous screen in reading order, or the next/previous chapter at the edges.
     func step(_ delta: Int) {
-        let target = currentIndex + delta
-        if target > pages.count {
+        let target = currentScreen + delta
+        if target >= screens.count {
             callbacks.nextChapter()
         } else if target < 0 {
             callbacks.previousChapter()
         } else {
             enteringBackward = delta < 0
-            go(to: target, animated: true)
+            show(screen: target, reporting: screens[target].last ?? 0, animated: true)
             enteringBackward = false
         }
     }
 
-    // Index `pages.count` is the end-of-chapter card.
-    private func controller(at index: Int) -> UIViewController? {
-        guard index >= 0, index <= pages.count else { return nil }
-        if index == pages.count {
+    // The last screen is the end-of-chapter card.
+    private func controller(at screen: Int) -> UIViewController? {
+        guard screens.indices.contains(screen) else { return nil }
+        let indices = screens[screen]
+        if indices.first == pages.count {
             let end = EndCardController(title: endTitle, nextTitle: nextTitle)
-            end.index = index
+            end.screen = screen
             end.onNext = { [weak self] in self?.callbacks.nextChapter() }
             end.onTap = { [weak self] point, width in self?.handleTap(point, width: width) }
             return end
         }
-        let page = ZoomingPageController(page: pages[index])
-        page.index = index
-        page.guided = panelByPanel
+        let page = ZoomingPageController(pages: indices.map { pages[$0] }, firstNumber: (indices.first ?? 0) + 1)
+        page.screen = screen
+        page.guided = panelByPanel && indices.count == 1
         page.rightToLeft = rightToLeft
         page.startAtLastPanel = enteringBackward
         page.onTap = { [weak self] point, width in self?.handleTap(point, width: width) }
@@ -211,36 +303,42 @@ final class PagedImageReaderController: UIViewController, UIPageViewControllerDa
     }
 
     private func prefetch(around index: Int) {
-        let upcoming = pages.indices.filter { $0 > index && $0 <= index + 3 }.map { pages[$0] }
+        let upcoming = pages.indices.filter { $0 > index && $0 <= index + 4 }.map { pages[$0] }
         ImageLoader.shared.prefetch(upcoming, width: ZoomingPageController.decodeWidth(view.bounds.width))
     }
 
-    private func index(of vc: UIViewController) -> Int {
-        (vc as? ZoomingPageController)?.index ?? (vc as? EndCardController)?.index ?? 0
+    private func screen(of vc: UIViewController) -> Int {
+        (vc as? ZoomingPageController)?.screen ?? (vc as? EndCardController)?.screen ?? 0
     }
 
     // MARK: Data source. In right-to-left mode the next page sits to the left.
 
     func pageViewController(_ pvc: UIPageViewController, viewControllerBefore vc: UIViewController) -> UIViewController? {
-        controller(at: index(of: vc) + (rightToLeft ? 1 : -1))
+        controller(at: screen(of: vc) + (rightToLeft ? 1 : -1))
     }
 
     func pageViewController(_ pvc: UIPageViewController, viewControllerAfter vc: UIViewController) -> UIViewController? {
-        controller(at: index(of: vc) + (rightToLeft ? -1 : 1))
+        controller(at: screen(of: vc) + (rightToLeft ? -1 : 1))
     }
 
     func pageViewController(_ pvc: UIPageViewController, didFinishAnimating finished: Bool, previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
         guard completed, let vc = pvc.viewControllers?.first else { return }
-        currentIndex = index(of: vc)
+        let shown = screen(of: vc)
+        guard screens.indices.contains(shown) else { return }
+        currentScreen = shown
+        currentIndex = screens[shown].last ?? 0
         prefetch(around: currentIndex)
         callbacks.pageChanged(currentIndex)
     }
 }
 
-/// One page: a zoomable image with a spinner and retry.
+/// One screen of the reader: a page, or two side by side, zoomable together, with a
+/// spinner and retry.
 final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
-    var index = 0
+    /// Which of the reader's screens this is.
+    var screen = 0
     var onTap: (CGPoint, CGFloat) -> Void = { _, _ in }
+    /// Panel by panel. Only for a single page.
     var guided = false
     var rightToLeft = true
     var startAtLastPanel = false
@@ -249,12 +347,21 @@ final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
     /// The panel shown, or -1 for the whole page.
     private var panelIndex = -1
     private var detectTask: Task<Void, Never>?
-    private let page: ImagePage
+    /// In reading order: with two, the first is read first.
+    private let pages: [ImagePage]
+    private let firstNumber: Int
     private let scrollView = UIScrollView()
-    private let imageView = UIImageView()
+    /// What zooms: it holds the page, or both pages.
+    private let content = UIView()
+    private var imageViews: [UIImageView] = []
+    private var failed: Set<Int> = []
+    private var loadingCount = 0
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let retry = UIButton(type: .system)
-    private var task: Task<Void, Never>?
+    private var tasks: [Task<Void, Never>] = []
+
+    /// The page that panel by panel works on.
+    private var imageView: UIImageView { imageViews[0] }
 
     /// Width in points to decode pages at. Wider than the screen (never wider than the
     /// source), so a page zoomed in stays sharp. Prefetches must use the same width, or
@@ -263,8 +370,9 @@ final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
         max(viewWidth, UIScreen.main.bounds.width) * 2.5
     }
 
-    init(page: ImagePage) {
-        self.page = page
+    init(pages: [ImagePage], firstNumber: Int) {
+        self.pages = Array(pages.prefix(2))
+        self.firstNumber = firstNumber
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -283,12 +391,17 @@ final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
         scrollView.contentInsetAdjustmentBehavior = .never
         view.addSubview(scrollView)
 
-        imageView.contentMode = .scaleAspectFit
-        imageView.frame = scrollView.bounds
-        imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        imageView.accessibilityLabel = "Page \(index + 1)"
-        imageView.isAccessibilityElement = true
-        scrollView.addSubview(imageView)
+        content.frame = scrollView.bounds
+        scrollView.addSubview(content)
+        for offset in pages.indices {
+            let imageView = UIImageView()
+            imageView.contentMode = .scaleAspectFit
+            imageView.accessibilityLabel = "Page \(firstNumber + offset)"
+            imageView.isAccessibilityElement = true
+            content.addSubview(imageView)
+            imageViews.append(imageView)
+        }
+        layoutPages()
 
         spinner.color = .lightGray
         spinner.translatesAutoresizingMaskIntoConstraints = false
@@ -315,25 +428,72 @@ final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
         load()
     }
 
-    @objc private func load() {
-        retry.isHidden = true
-        let width = Self.decodeWidth(view.bounds.width)
-        if let hit = ImageLoader.shared.cached(page, width: width) {
-            imageView.image = hit
-            findPanels()
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Zoomed in, the content carries a scale; it's laid out again once back at 1x.
+        if abs(scrollView.zoomScale - 1) < 0.001 { layoutPages() }
+    }
+
+    /// One page fills the screen. Two sit either side of the middle, each as large as its
+    /// half allows and touching the other, the way an open book does.
+    private func layoutPages() {
+        let bounds = scrollView.bounds
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        content.frame = CGRect(origin: .zero, size: bounds.size)
+        scrollView.contentSize = bounds.size
+        guard imageViews.count == 2 else {
+            imageViews.first?.frame = content.bounds
             return
         }
-        spinner.startAnimating()
-        task = Task { [weak self, page] in
-            do {
-                let loaded = try await ImageLoader.shared.load(page, width: width)
-                self?.imageView.image = loaded.image
-                self?.findPanels()
-            } catch {
-                if !Task.isCancelled { self?.retry.isHidden = false }
+        let half = CGSize(width: bounds.width / 2, height: bounds.height)
+        for (offset, imageView) in imageViews.enumerated() {
+            // The page read first is on the right when reading right to left.
+            let onLeft = (offset == 0) != rightToLeft
+            var size = half
+            if let image = imageView.image, image.size.width > 0, image.size.height > 0 {
+                let scale = min(half.width / image.size.width, half.height / image.size.height)
+                size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
             }
-            self?.spinner.stopAnimating()
+            imageView.frame = CGRect(
+                x: onLeft ? half.width - size.width : half.width, y: (half.height - size.height) / 2,
+                width: size.width, height: size.height)
         }
+    }
+
+    @objc private func load() {
+        retry.isHidden = true
+        failed = []
+        let width = Self.decodeWidth(view.bounds.width)
+        for (offset, page) in pages.enumerated() where imageViews[offset].image == nil {
+            if let hit = ImageLoader.shared.cached(page, width: width) {
+                show(hit, at: offset)
+                continue
+            }
+            loadingCount += 1
+            spinner.startAnimating()
+            tasks.append(Task { [weak self] in
+                do {
+                    let loaded = try await ImageLoader.shared.load(page, width: width)
+                    self?.show(loaded.image, at: offset)
+                } catch {
+                    if !Task.isCancelled { self?.failed.insert(offset) }
+                }
+                self?.finishedOne()
+            })
+        }
+    }
+
+    private func show(_ image: UIImage, at offset: Int) {
+        imageViews[offset].image = image
+        if abs(scrollView.zoomScale - 1) < 0.001 { layoutPages() }
+        if offset == 0 { findPanels() }
+    }
+
+    private func finishedOne() {
+        loadingCount = max(0, loadingCount - 1)
+        guard loadingCount == 0 else { return }
+        spinner.stopAnimating()
+        retry.isHidden = failed.isEmpty
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -348,13 +508,14 @@ final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
     }
 
     deinit {
-        task?.cancel()
+        tasks.forEach { $0.cancel() }
         detectTask?.cancel()
     }
 
     // MARK: Panels
 
     func setGuided(_ value: Bool, rightToLeft: Bool) {
+        guard pages.count == 1 else { return }
         guided = value
         if rightToLeft != self.rightToLeft { panels = nil }
         self.rightToLeft = rightToLeft
@@ -378,7 +539,7 @@ final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
     }
 
     private func findPanels() {
-        guard guided, panels == nil, detectTask == nil, let image = imageView.image else { return }
+        guard guided, panels == nil, detectTask == nil, let page = pages.first, let image = imageView.image else { return }
         let key = page.url.absoluteString + (rightToLeft ? "|rtl" : "|ltr")
         if let known = PanelCache.shared[key] {
             panels = known
@@ -425,7 +586,7 @@ final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
         return true
     }
 
-    func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? { content }
 
     @objc private func singleTapped(_ gesture: UITapGestureRecognizer) {
         guard guided || scrollView.zoomScale <= 1.01 else { return }
@@ -436,7 +597,7 @@ final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
         if scrollView.zoomScale > 1.01 {
             scrollView.setZoomScale(1, animated: true)
         } else {
-            let point = gesture.location(in: imageView)
+            let point = gesture.location(in: content)
             let size = CGSize(width: scrollView.bounds.width / 2.5, height: scrollView.bounds.height / 2.5)
             scrollView.zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height), animated: true)
         }
@@ -445,7 +606,7 @@ final class ZoomingPageController: UIViewController, UIScrollViewDelegate {
 
 /// Shown after the last page.
 final class EndCardController: UIViewController {
-    var index = 0
+    var screen = 0
     var onNext: () -> Void = {}
     var onTap: (CGPoint, CGFloat) -> Void = { _, _ in }
     private let titleText: String

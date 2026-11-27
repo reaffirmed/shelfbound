@@ -42,6 +42,10 @@ public struct WorkSettings: Codable, Sendable, Hashable {
     public var panelByPanel: Bool?
     /// The work page's chapter list, newest chapter at the top. Nil is oldest first.
     public var chaptersNewestFirst: Bool?
+    /// Paged image chapters: two pages side by side when the screen is wider than tall. Nil is on.
+    public var twoPageSpread: Bool?
+    /// Two-page spreads: the first page stands alone, as a cover does. Nil is on.
+    public var spreadCoverAlone: Bool?
 
     public init(readingMode: ReadingMode? = nil, autoDownload: Bool? = nil, skipNotes: Bool = false, preferredGroup: String? = nil) {
         self.readingMode = readingMode
@@ -138,6 +142,10 @@ public struct LibraryState: Codable, Sendable, Hashable {
     public var lastUpdateCheck: Date?
     /// When the user last looked at the library, for "N new chapters since you last opened".
     public var lastViewedUpdatesAt: Date?
+    /// Searches the person kept. Optional so library files from before them still load.
+    public var savedSearches: [SavedSearch]?
+    /// Shelves the person made. Optional for the same reason.
+    public var shelves: [CustomShelf]?
 
     public init(records: [String: WorkRecord] = [:]) {
         self.records = records

@@ -25,13 +25,28 @@ struct LibraryView: View {
     @State private var deleting: WorkRecord?
     @State private var query = ""
     @State private var show: LibraryShow = .everything
+    /// The shelf picked in the row of shelves, as its ID. Empty shows every work.
+    @AppStorage("library.shelf") private var shelfID = ""
+    /// Picking several works at once, to shelve, mark read, download or remove them together.
+    @State private var selecting = false
+    @State private var selection: Set<WorkKey> = []
+    @State private var namingShelf = false
+    @State private var shelfName = ""
+    /// Works that go on the shelf being named.
+    @State private var shelfKeys: [WorkKey] = []
+    @State private var renamingShelf: CustomShelf?
+    @State private var confirmingRemove = false
+
+    private var activeShelf: CustomShelf? { model.shelves.first { $0.id.uuidString == shelfID } }
 
     private let columns = [GridItem(.adaptive(minimum: 100, maximum: 160), spacing: 14, alignment: .top)]
 
-    /// The library narrowed by the search field and the "Show" choice.
+    /// The library narrowed by the search field, the "Show" choice and the shelf picked.
     private var shelf: [WorkRecord] {
         let text = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let onShelf = activeShelf.map { Set($0.workIDs) }
         return model.library.library.filter { record in
+            if let onShelf, !onShelf.contains(record.id) { return false }
             switch show {
             case .everything: break
             case .unread: if record.readChapterIDs.count >= record.readingOrder.count { return false }
@@ -51,17 +66,6 @@ struct LibraryView: View {
                 FileImportBanner()
                 if model.library.library.isEmpty {
                     emptyState
-                } else if shelf.isEmpty {
-                    if query.trimmingCharacters(in: .whitespaces).isEmpty {
-                        ContentUnavailableView {
-                            Label("Nothing \(show.label.lowercased()) here", systemImage: "line.3.horizontal.decrease.circle")
-                        } actions: {
-                            Button("Show everything") { show = .everything }
-                        }
-                        .padding(.top, 80)
-                    } else {
-                        ContentUnavailableView.search(text: query).padding(.top, 80)
-                    }
                 } else {
                     VStack(alignment: .leading, spacing: 0) {
                         Picker("Show", selection: $filter) {
@@ -71,16 +75,36 @@ struct LibraryView: View {
                         .padding(.horizontal)
                         .padding(.top, 4)
 
-                        continueRail
-                        updatesRow
-                        sections
+                        shelfBar
+                        if shelf.isEmpty {
+                            nothingToShow
+                        } else {
+                            if !selecting {
+                                continueRail
+                                updatesRow
+                            }
+                            sections
+                        }
                     }
                     .padding(.bottom, 24)
                 }
             }
-            .navigationTitle("Library")
+            .navigationTitle(title)
             .searchable(text: $query, prompt: "Search library")
             .toolbar { toolbar }
+            .safeAreaInset(edge: .bottom, spacing: 0) { if selecting { selectionBar } }
+            .alert(renamingShelf == nil ? "New shelf" : "Rename shelf", isPresented: $namingShelf) {
+                TextField("Name", text: $shelfName)
+                Button(renamingShelf == nil ? "Create" : "Save") { commitShelfName() }
+                Button("Cancel", role: .cancel) { renamingShelf = nil }
+            } message: {
+                Text(shelfMessage)
+            }
+            .confirmationDialog(removeTitle, isPresented: $confirmingRemove, titleVisibility: .visible) {
+                Button("Remove from library", role: .destructive) { removeSelected() }
+            } message: {
+                Text(removeMessage)
+            }
             .refreshable { await model.checkForUpdates() }
             .navigationDestination(for: WorkRoute.self) { WorkDetailView(route: $0) }
             .navigationDestination(for: LibrarySectionRoute.self) { SectionView(route: $0) }
@@ -120,6 +144,168 @@ struct LibraryView: View {
             .accessibilityIdentifier("library.importFiles")
         }
         .padding(.top, 80)
+    }
+
+    private var title: String {
+        guard selecting else { return "Library" }
+        return selection.isEmpty ? "Select works" : "\(selection.count) selected"
+    }
+
+    private var shelfMessage: String {
+        if renamingShelf != nil { return "" }
+        if shelfKeys.isEmpty { return "A shelf holds any works you choose. A work can sit on several." }
+        return shelfKeys.count == 1 ? "The work goes on it." : "The \(shelfKeys.count) works go on it."
+    }
+
+    private var removeTitle: String {
+        selection.count == 1 ? "Remove this work from your library?" : "Remove \(selection.count) works from your library?"
+    }
+
+    private var removeMessage: String {
+        selection.contains(where: { LocalBooks.isLocal($0) })
+            ? "Your place in each is kept. Imported files stay; delete those one at a time."
+            : "Your place in each is kept, in case you add it back."
+    }
+
+    /// The shelf, search or "Show" choice leaves nothing to list.
+    @ViewBuilder
+    private var nothingToShow: some View {
+        if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+            ContentUnavailableView.search(text: query).padding(.top, 60)
+        } else if show == .everything, let activeShelf {
+            ContentUnavailableView {
+                Label("Nothing on \(activeShelf.name) yet", systemImage: "books.vertical")
+            } description: {
+                Text("Touch and hold a work and choose Shelves, or choose Select from the menu to add several at once.")
+            } actions: {
+                Button("Show all works") { shelfID = "" }
+            }
+            .padding(.top, 60)
+        } else {
+            ContentUnavailableView {
+                Label("Nothing \(show.label.lowercased()) here", systemImage: "line.3.horizontal.decrease.circle")
+            } actions: {
+                Button("Show everything") { show = .everything }
+            }
+            .padding(.top, 60)
+        }
+    }
+
+    /// The person's own shelves, as a row of chips. Hidden until there is one.
+    @ViewBuilder
+    private var shelfBar: some View {
+        let shelves = model.shelves
+        if !shelves.isEmpty {
+            let inLibrary = Set(model.library.library.map(\.id))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    Button { shelfID = "" } label: { FilterChipLabel(text: "All works", on: activeShelf == nil) }
+                        .buttonStyle(.plain)
+                    ForEach(shelves) { item in
+                        let count = item.workIDs.filter { inLibrary.contains($0) }.count
+                        Button { shelfID = item.id.uuidString } label: {
+                            FilterChipLabel(text: "\(item.name) · \(count)", on: activeShelf?.id == item.id)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("library.shelf")
+                        .contextMenu {
+                            Button {
+                                renamingShelf = item
+                                shelfName = item.name
+                                namingShelf = true
+                            } label: {
+                                Label("Rename", systemImage: "pencil")
+                            }
+                            Button(role: .destructive) {
+                                if activeShelf?.id == item.id { shelfID = "" }
+                                model.deleteShelf(item.id)
+                            } label: {
+                                Label("Delete shelf", systemImage: "trash")
+                            }
+                        }
+                    }
+                    Button { nameNewShelf(for: []) } label: {
+                        FilterChipLabel(text: "New shelf", on: false, systemImage: "plus")
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal)
+                .padding(.top, 12)
+            }
+        }
+    }
+
+    private func nameNewShelf(for keys: [WorkKey]) {
+        renamingShelf = nil
+        shelfKeys = keys
+        shelfName = ""
+        namingShelf = true
+    }
+
+    private func commitShelfName() {
+        if let renamingShelf {
+            model.renameShelf(renamingShelf.id, to: shelfName)
+        } else if let id = model.createShelf(named: shelfName, adding: shelfKeys) {
+            // A shelf made empty is opened, ready to be filled.
+            if shelfKeys.isEmpty { shelfID = id.uuidString }
+            Haptics.light()
+        }
+        renamingShelf = nil
+        shelfKeys = []
+    }
+
+    // MARK: Selecting several
+
+    private var selectedRecords: [WorkRecord] { selection.compactMap { model.record($0) } }
+
+    private func endSelecting() {
+        selecting = false
+        selection = []
+    }
+
+    private func removeSelected() {
+        for record in selectedRecords where record.inLibrary && !LocalBooks.isLocal(record.key) {
+            model.toggleLibrary(record.key)
+        }
+        endSelecting()
+    }
+
+    /// What can be done to the works picked, along the bottom while selecting.
+    private var selectionBar: some View {
+        HStack(alignment: .top) {
+            ShelfMenu(model: model, keys: Array(selection), stacked: true) { nameNewShelf(for: Array(selection)) }
+                .frame(maxWidth: .infinity)
+            Button {
+                for record in selectedRecords {
+                    if let last = record.readingOrder.last { model.markReadThrough(last.id, in: record.key) }
+                }
+                Haptics.success()
+                endSelecting()
+            } label: {
+                StackedLabel(title: "Mark read", systemImage: "checkmark.circle")
+            }
+            .frame(maxWidth: .infinity)
+            Button {
+                for record in selectedRecords {
+                    let unread = record.readingOrder.filter { !record.isRead($0.id) }
+                    if !unread.isEmpty { model.download(unread, of: record) }
+                }
+                endSelecting()
+            } label: {
+                StackedLabel(title: "Download", systemImage: "arrow.down.circle")
+            }
+            .frame(maxWidth: .infinity)
+            .accessibilityLabel("Download unread chapters")
+            Button(role: .destructive) { confirmingRemove = true } label: {
+                StackedLabel(title: "Remove", systemImage: "minus.circle")
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .disabled(selection.isEmpty)
+        .padding(.horizontal, 8)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+        .background(.bar)
     }
 
     @ViewBuilder
@@ -180,17 +366,28 @@ struct LibraryView: View {
             sourceName: { model.sourceName($0) })
         ForEach(sections) { section in
             SectionHeader(title: section.title, subtitle: section.subtitle, mark: model.settings.grouping == .fandom ? section.title : nil) {
-                if section.records.count > 6 {
-                    NavigationLink("See all", value: LibrarySectionRoute(title: section.title, filter: filter))
+                if section.records.count > 6, !selecting {
+                    NavigationLink("See all", value: LibrarySectionRoute(title: section.title, filter: filter, shelf: activeShelf?.id))
                         .font(.subheadline)
                 }
             }
             LazyVGrid(columns: columns, spacing: 18) {
-                ForEach(section.records.prefix(section.records.count > 6 ? 6 : section.records.count)) { record in
-                    NavigationLink(value: WorkRoute(key: record.key, summary: record.summary)) {
-                        LibraryTile(record: record, delete: { deleting = record })
+                // While selecting, every work shows, so none is out of reach behind "See all".
+                ForEach(selecting ? section.records : Array(section.records.prefix(6))) { record in
+                    if selecting {
+                        Button {
+                            if selection.remove(record.key) == nil { selection.insert(record.key) }
+                        } label: {
+                            LibraryTile(record: record, selected: selection.contains(record.key))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(selection.contains(record.key) ? .isSelected : [])
+                    } else {
+                        NavigationLink(value: WorkRoute(key: record.key, summary: record.summary)) {
+                            LibraryTile(record: record, delete: { deleting = record }, newShelf: { nameNewShelf(for: [$0]) })
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal)
@@ -202,6 +399,17 @@ struct LibraryView: View {
         @Bindable var model = model
         // One menu instead of three buttons: pulling down already checks for new chapters,
         // and importing is an occasional job.
+        if selecting {
+            ToolbarItem(placement: .topBarLeading) {
+                let all = Set(shelf.filter { filter.matches($0.format) }.map(\.key))
+                Button(selection == all && !all.isEmpty ? "Deselect all" : "Select all") {
+                    selection = selection == all ? [] : all
+                }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") { endSelecting() }
+            }
+        }
         ToolbarItemGroup(placement: .primaryAction) {
             if model.isCheckingUpdates {
                 ProgressView().accessibilityLabel("Checking for new chapters")
@@ -215,6 +423,14 @@ struct LibraryView: View {
                 }
                 Picker("Sort by", selection: $model.settings.sort) {
                     ForEach(LibrarySort.allCases) { Text($0.label).tag($0) }
+                }
+                Section {
+                    Button { selecting = true } label: {
+                        Label("Select", systemImage: "checkmark.circle")
+                    }
+                    Button { nameNewShelf(for: []) } label: {
+                        Label("New shelf", systemImage: "books.vertical")
+                    }
                 }
                 Section {
                     Button {
@@ -253,6 +469,55 @@ enum LibraryShow: String, CaseIterable, Identifiable {
 struct LibrarySectionRoute: Hashable {
     let title: String
     let filter: LibraryFilter
+    /// The shelf the library was showing, so "See all" lists the same works.
+    var shelf: UUID? = nil
+}
+
+/// "Shelves", with each shelf ticked when every one of `keys` is on it. Tapping a shelf
+/// puts the works on it or takes them off.
+@MainActor
+struct ShelfMenu: View {
+    let model: AppModel
+    let keys: [WorkKey]
+    /// Icon over title, for the bar shown while selecting.
+    var stacked = false
+    /// Asks for a name for a new shelf that these works go on.
+    var newShelf: (() -> Void)? = nil
+
+    var body: some View {
+        Menu {
+            ForEach(model.shelves) { shelf in
+                let all = !keys.isEmpty && keys.allSatisfy { shelf.contains($0) }
+                Button { model.setShelf(shelf.id, contains: !all, keys) } label: {
+                    if all { Label(shelf.name, systemImage: "checkmark") } else { Text(shelf.name) }
+                }
+            }
+            if let newShelf {
+                Button(action: newShelf) { Label("New shelf", systemImage: "plus") }
+            }
+        } label: {
+            if stacked {
+                StackedLabel(title: "Shelves", systemImage: "books.vertical")
+            } else {
+                Label("Shelves", systemImage: "books.vertical")
+            }
+        }
+    }
+}
+
+/// An icon with its title under it, for a bar of a few actions.
+struct StackedLabel: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Image(systemName: systemImage).font(.system(size: 20))
+            Text(title).font(.caption2)
+        }
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+    }
 }
 
 struct UpdatesRoute: Hashable {}
@@ -296,14 +561,32 @@ struct LibraryTile: View {
     let record: WorkRecord
     /// Asks to delete an imported file. Without it, imported files offer nothing to remove.
     var delete: (() -> Void)? = nil
+    /// Asks for a name for a new shelf that this work goes on.
+    var newShelf: ((WorkKey) -> Void)? = nil
+    /// While several works are being picked: whether this one is. Nil otherwise.
+    var selected: Bool? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             BadgedCover(record: record, showBadge: model.settings.badgeNewChapters, downloaded: hasDownloads)
+                .overlay(alignment: .topLeading) {
+                    if let selected {
+                        Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 22))
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, selected ? Color.shelfAccent : Color.black.opacity(0.35))
+                            .shadow(radius: 1)
+                            .padding(5)
+                    }
+                }
+                .opacity(selected == false ? 0.75 : 1)
             Text(record.title).font(.footnote.weight(.semibold)).lineLimit(2).foregroundStyle(.primary)
             Text(meta).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
         }
         .contextMenu {
+            if selected == nil, record.inLibrary, newShelf != nil || !model.shelves.isEmpty {
+                ShelfMenu(model: model, keys: [record.key], newShelf: newShelf == nil ? nil : { newShelf?(record.key) })
+            }
             if LocalBooks.isLocal(record.key) {
                 if let delete {
                     Button(role: .destructive, action: delete) {
@@ -371,8 +654,9 @@ struct SectionView: View {
     private let columns = [GridItem(.adaptive(minimum: 100, maximum: 160), spacing: 14, alignment: .top)]
 
     var body: some View {
+        let onShelf = route.shelf.flatMap { id in model.shelves.first { $0.id == id } }.map { Set($0.workIDs) }
         let section = LibraryLayout.sections(
-            model.library.library, filter: route.filter, grouping: model.settings.grouping, sort: model.settings.sort,
+            model.library.library.filter { onShelf?.contains($0.id) ?? true }, filter: route.filter, grouping: model.settings.grouping, sort: model.settings.sort,
             sourceName: model.sourceName
         ).first { $0.title == route.title }
         ScrollView {

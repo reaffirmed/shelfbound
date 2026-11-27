@@ -24,6 +24,8 @@ struct VerticalImageReader: UIViewControllerRepresentable {
     var nextFailed = false
     var onPosition: (String, Double) -> Void
     var onNearEnd: () -> Void
+    /// Scrolling up towards the top of the strip: time to add the chapter before it.
+    var onNearStart: () -> Void = {}
     var onTap: () -> Void
     /// A tap stopped auto-scroll. The reader pauses it, so it doesn't start again on the next update.
     var onAutoScrollStopped: () -> Void = {}
@@ -48,7 +50,7 @@ struct VerticalImageReader: UIViewControllerRepresentable {
     }
 
     private var callbacks: VerticalImageReaderController.Callbacks {
-        .init(position: onPosition, nearEnd: onNearEnd, tap: onTap, autoScrollStopped: onAutoScrollStopped)
+        .init(position: onPosition, nearEnd: onNearEnd, nearStart: onNearStart, tap: onTap, autoScrollStopped: onAutoScrollStopped)
     }
 }
 
@@ -56,6 +58,7 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
     struct Callbacks {
         var position: (String, Double) -> Void = { _, _ in }
         var nearEnd: () -> Void = {}
+        var nearStart: () -> Void = {}
         var tap: () -> Void = {}
         var autoScrollStopped: () -> Void = {}
     }
@@ -87,6 +90,9 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
     /// When "near the end" was last sent: once a second is plenty to start (or retry) loading
     /// the next chapter, instead of on every frame of scrolling.
     private var nearEndSentAt: CFTimeInterval = 0
+    private var nearStartSentAt: CFTimeInterval = 0
+    /// Where the strip was at the last scroll event, to tell scrolling up from scrolling down.
+    private var lastOffsetY: CGFloat = 0
     /// Pages whose real shape arrived since the last layout pass; applied together.
     private var pendingAspects: [IndexPath: URL] = [:]
     private var aspectFlushScheduled = false
@@ -210,19 +216,66 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
 
     func set(chapters new: [StripChapter], start: (chapterID: String, progress: Double)) {
         loadViewIfNeeded()
-        if new.map(\.id) == chapters.map(\.id) { return }
-        let isAppend = !chapters.isEmpty && new.count > chapters.count && Array(new.prefix(chapters.count).map(\.id)) == chapters.map(\.id)
-        if isAppend {
-            let added = IndexSet(chapters.count..<new.count)
-            chapters = new
-            UIView.performWithoutAnimation { collectionView.insertSections(added) }
+        let oldIDs = chapters.map(\.id)
+        let newIDs = new.map(\.id)
+        if newIDs == oldIDs { return }
+        // The chapters already shown, with more added after them, before them, or both.
+        if let first = oldIDs.first, let offset = newIDs.firstIndex(of: first), offset + oldIDs.count <= newIDs.count,
+           Array(newIDs[offset..<(offset + oldIDs.count)]) == oldIDs {
+            extend(to: new, before: offset)
         } else {
             chapters = new
             pendingAspects = [:]
             nearEndSentAt = 0
+            nearStartSentAt = 0
             collectionView.reloadData()
             pendingStart = start
             view.setNeedsLayout()
+        }
+    }
+
+    /// Adds chapters around the ones shown: `before` of them above, the rest below. Adding
+    /// above pushes everything down, so the strip is moved by the same amount and the page
+    /// being read stays where it is on screen.
+    private func extend(to new: [StripChapter], before: Int) {
+        let old = chapters.count
+        var added = IndexSet(integersIn: 0..<before)
+        added.insert(integersIn: (before + old)..<new.count)
+        guard before > 0 else {
+            chapters = new
+            UIView.performWithoutAnimation { collectionView.insertSections(added) }
+            refreshFooter(at: old - 1)
+            return
+        }
+        collectionView.layoutIfNeeded()
+        let layout = collectionView.collectionViewLayout
+        let anchor = chapters[0].pages.isEmpty ? nil : layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 0))?.frame.minY
+        let offset = collectionView.contentOffset.y
+        let height = collectionView.contentSize.height
+        chapters = new
+        // Page shapes noted for the chapters that were there now belong further down.
+        var moved: [IndexPath: URL] = [:]
+        for (path, url) in pendingAspects { moved[IndexPath(item: path.item, section: path.section + before)] = url }
+        pendingAspects = moved
+        UIView.performWithoutAnimation {
+            collectionView.insertSections(added)
+            collectionView.layoutIfNeeded()
+            var shift = collectionView.contentSize.height - height
+            if let anchor, let now = layout.layoutAttributesForItem(at: IndexPath(item: 0, section: before))?.frame.minY {
+                shift = now - anchor
+            }
+            collectionView.contentOffset.y = offset + shift
+        }
+        lastOffsetY = collectionView.contentOffset.y
+        refreshFooter(at: before + old - 1)
+    }
+
+    /// The end of a chapter that just got a chapter after it names that chapter.
+    private func refreshFooter(at section: Int) {
+        guard section >= 0, section + 1 < chapters.count else { return }
+        let path = IndexPath(item: 0, section: section)
+        if let footer = collectionView.supplementaryView(forElementKind: UICollectionView.elementKindSectionFooter, at: path) as? ChapterFooter {
+            footer.configure(ended: chapters[section].title, next: chapters[section + 1].title, more: moreAfterLast, failed: nextFailed)
         }
     }
 
@@ -275,6 +328,17 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         reportPosition(force: false)
+        let y = scrollView.contentOffset.y
+        // Only a finger (or its momentum) going up asks for the chapter before: opening a
+        // chapter at its top shouldn't fetch the previous one every time.
+        if y < lastOffsetY, y < scrollView.bounds.height * 1.5, scrollView.isDragging || scrollView.isDecelerating {
+            let now = CACurrentMediaTime()
+            if now - nearStartSentAt >= 1 {
+                nearStartSentAt = now
+                callbacks.nearStart()
+            }
+        }
+        lastOffsetY = y
         if scrollView.contentOffset.y + scrollView.bounds.height * 3 > scrollView.contentSize.height {
             let now = CACurrentMediaTime()
             if now - nearEndSentAt >= 1 {
@@ -424,6 +488,16 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
         DispatchQueue.main.async { [weak self] in self?.applyLearnedAspects() }
     }
 
+    /// Where a page is now. A chapter added above moves every page down a section after
+    /// its load was started, so the place noted then can be out of date.
+    private func place(of url: URL, noted: IndexPath) -> IndexPath? {
+        for section in [noted.section] + Array(chapters.indices) where section < chapters.count {
+            let pages = chapters[section].pages
+            if noted.item < pages.count, pages[noted.item].url == url { return IndexPath(item: noted.item, section: section) }
+        }
+        return nil
+    }
+
     private func applyLearnedAspects() {
         aspectFlushScheduled = false
         let pending = pendingAspects
@@ -433,10 +507,8 @@ final class VerticalImageReaderController: UIViewController, UICollectionViewDat
         let top = collectionView.contentOffset.y
         var changed = false
         var shiftAbove: CGFloat = 0
-        for (indexPath, url) in pending {
-            guard indexPath.section < chapters.count,
-                  indexPath.item < chapters[indexPath.section].pages.count,
-                  chapters[indexPath.section].pages[indexPath.item].url == url,
+        for (noted, url) in pending {
+            guard let indexPath = place(of: url, noted: noted),
                   let aspect = aspects[url],
                   let frame = collectionView.layoutAttributesForItem(at: indexPath)?.frame else { continue }
             let delta = max(1, (width * aspect).rounded()) - frame.height

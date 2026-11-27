@@ -466,6 +466,7 @@ struct PagedReaderScreen: View {
     @State private var startAtEnd = false
     @State private var prefetched: Set<String> = []
     @State private var barsTouched = false
+    @State private var showingTint = false
     /// How many times the page-turn hint has been shown; after a few, it stays away.
     @AppStorage("reader.pagedHintShown") private var hintShown = 0
 
@@ -485,6 +486,8 @@ struct PagedReaderScreen: View {
                 PagedImageReader(
                     chapterID: chapterID, pages: pages, startPage: startPage, rightToLeft: rightToLeft,
                     panelByPanel: panelByPanel,
+                    spread: context.record?.settings.twoPageSpread ?? true,
+                    coverAlone: context.record?.settings.spreadCoverAlone ?? true,
                     endTitle: "End of \(context.chapter(chapterID)?.title ?? "chapter")",
                     nextTitle: context.neighbour(of: chapterID, 1)?.title,
                     page: $page,
@@ -501,6 +504,7 @@ struct PagedReaderScreen: View {
             } else {
                 ChapterStatusView(phase: phase, dark: true, retry: { Task { await load() } }) { phase = .loaded($0) }
             }
+            PageTint()
             if showHint, hintShown < 3, case .loaded = phase {
                 Text(rightToLeft ? "Tap the left side for the next page (right to left)" : "Tap the right side for the next page")
                     .font(.footnote).foregroundStyle(.white)
@@ -524,6 +528,7 @@ struct PagedReaderScreen: View {
         .sheet(isPresented: $showingChapters) {
             ChapterListSheet(key: key, current: chapterID) { chapterID = $0 }
         }
+        .sheet(isPresented: $showingTint) { PageTintSheet() }
     }
 
     private var pageCount: Int {
@@ -586,7 +591,7 @@ struct PagedReaderScreen: View {
             .accessibilityLabel(panelByPanel ? "Show whole pages" : "Read panel by panel")
             Button { showingChapters = true } label: { Image(systemName: "list.bullet").frame(width: 44, height: 44) }
                 .accessibilityLabel("Chapters")
-            ReadingModeMenu(key: key)
+            ReadingModeMenu(key: key, showingTint: $showingTint)
         }
     }
 
@@ -629,6 +634,9 @@ struct VerticalReaderScreen: View {
     @State private var phase: ChapterPhase = .loading
     @State private var progress: Double = 0
     @State private var loadingNext = false
+    @State private var loadingPrevious = false
+    /// The chapter before the strip couldn't be added; it isn't tried again until the strip starts over.
+    @State private var previousUnavailable = false
     /// Why the next chapter couldn't be added to the strip. Loading it isn't tried again
     /// until the person asks, or passes the site's check.
     @State private var nextFailure: ChapterPhase?
@@ -640,6 +648,7 @@ struct VerticalReaderScreen: View {
     @State private var visibleChapter = ""
     /// Auto-scroll stopped by a tap. The speed stays chosen, so it can pick up again.
     @State private var autoScrollPaused = false
+    @State private var showingTint = false
 
     private var context: ReaderContext { ReaderContext(model: model, key: key) }
 
@@ -654,6 +663,7 @@ struct VerticalReaderScreen: View {
                     nextFailed: nextFailure != nil,
                     onPosition: { id, value in positionChanged(id, value) },
                     onNearEnd: { Task { await appendNext() } },
+                    onNearStart: { Task { await prependPrevious() } },
                     onTap: {
                         barsTouched = true
                         withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
@@ -670,6 +680,7 @@ struct VerticalReaderScreen: View {
                     if case let .images(pages) = content { startStrip(with: pages) }
                 }
             }
+            PageTint()
         }
         .overlay(alignment: .top) { if chrome { topBar.transition(.opacity) } }
         .overlay(alignment: .bottom) {
@@ -693,12 +704,14 @@ struct VerticalReaderScreen: View {
         .sheet(isPresented: $showingChapters) {
             ChapterListSheet(key: key, current: chapterID) { chapterID = $0 }
         }
+        .sheet(isPresented: $showingTint) { PageTintSheet() }
     }
 
     private func restart() async {
         strip = []
         phase = .loading
         nextFailure = nil
+        previousUnavailable = false
         let loading = chapterID
         let result = await context.load(loading)
         // Picking two chapters quickly starts two restarts; only the newest one's result counts.
@@ -737,6 +750,23 @@ struct VerticalReaderScreen: View {
             nextFailure = .failed("It has text, not pages.")
         default:
             nextFailure = result
+        }
+    }
+
+    /// Scrolling up past the top of the strip continues into the chapter before, the same
+    /// way scrolling down continues into the next.
+    private func prependPrevious() async {
+        guard !loadingPrevious, !previousUnavailable, let first = strip.first,
+              let previous = context.neighbour(of: first.id, -1) else { return }
+        loadingPrevious = true
+        defer { loadingPrevious = false }
+        let result = await context.load(previous.id)
+        // The strip may have been started over at another chapter while this loaded.
+        guard strip.first?.id == first.id else { return }
+        if case let .loaded(.images(pages)) = result, !pages.isEmpty {
+            strip.insert(StripChapter(id: previous.id, title: previous.title, pages: pages), at: 0)
+        } else {
+            previousUnavailable = true
         }
     }
 
@@ -831,6 +861,7 @@ struct VerticalReaderScreen: View {
                     Text("Fast").tag(160.0)
                 }
                 ReadingModePicker(key: key)
+                Button { showingTint = true } label: { Label("Dim and warmth", systemImage: "moon") }
             } label: {
                 Image(systemName: speed > 0 ? "play.circle.fill" : "slider.horizontal.3").frame(width: 44, height: 44)
             }
@@ -877,18 +908,101 @@ struct ReadingModePicker: View {
     }
 }
 
-/// The top bar button that opens the reading mode choices.
+/// The paged reader's top bar button: reading mode, two-page spreads, and dimming.
 @MainActor
 struct ReadingModeMenu: View {
+    @Environment(AppModel.self) private var model
     let key: WorkKey
+    @Binding var showingTint: Bool
 
     var body: some View {
+        let settings = model.record(key)?.settings
+        let spread = settings?.twoPageSpread ?? true
         Menu {
             ReadingModePicker(key: key)
+            Section("When the screen is turned sideways") {
+                Toggle(isOn: Binding(
+                    get: { spread },
+                    set: { on in model.updateRecord(key) { $0.settings.twoPageSpread = on } }
+                )) {
+                    Label("Two pages side by side", systemImage: "book")
+                }
+                if spread {
+                    // Off shifts every pair by one page, for when the two halves of a spread don't line up.
+                    Toggle(isOn: Binding(
+                        get: { settings?.spreadCoverAlone ?? true },
+                        set: { on in model.updateRecord(key) { $0.settings.spreadCoverAlone = on } }
+                    )) {
+                        Label("First page on its own", systemImage: "rectangle.portrait")
+                    }
+                }
+            }
+            Button { showingTint = true } label: { Label("Dim and warmth", systemImage: "moon") }
         } label: {
             Image(systemName: "slider.horizontal.3").frame(width: 44, height: 44)
         }
-        .accessibilityLabel("Reading mode")
+        .accessibilityLabel("Reading mode and display")
+    }
+}
+
+/// Darkens and warms the pages of the image readers, for reading at night. It sits over
+/// the pages and under the reader's bars, and lets every touch through.
+@MainActor
+struct PageTint: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let warmth = model.settings.pageWarmth
+        let dim = model.settings.pageDim
+        ZStack {
+            if warmth > 0 {
+                // Multiplied in, so white turns amber and black stays black.
+                Color(red: 1, green: 0.6, blue: 0.22).opacity(warmth).blendMode(.multiply)
+            }
+            if dim > 0 { Color.black.opacity(dim) }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// The two sliders for `PageTint`. Short, and without the usual grey over what's behind
+/// it, so the pages show the change as the sliders move.
+@MainActor
+struct PageTintSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        @Bindable var model = model
+        NavigationStack {
+            Form {
+                Section {
+                    LabeledContent("Dim") {
+                        Slider(value: $model.settings.pageDim, in: 0...AppSettings.maxPageTint)
+                            .accessibilityLabel("Dim")
+                    }
+                    LabeledContent("Warmth") {
+                        Slider(value: $model.settings.pageWarmth, in: 0...AppSettings.maxPageTint)
+                            .accessibilityLabel("Warmth")
+                    }
+                } footer: {
+                    Text("For reading in the dark. It applies to manga and manhwa pages in every work.")
+                }
+                if model.settings.pageDim > 0 || model.settings.pageWarmth > 0 {
+                    Button("Turn off") {
+                        model.settings.pageDim = 0
+                        model.settings.pageWarmth = 0
+                    }
+                }
+            }
+            .navigationTitle("Dim and warmth")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        .presentationDetents([.height(320)])
+        .presentationBackgroundInteraction(.enabled(upThrough: .height(320)))
     }
 }
 

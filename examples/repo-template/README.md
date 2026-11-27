@@ -46,6 +46,7 @@ Publish `dist/` and give people the URL of the folder. The app pins your public 
 | `suggest(filterID, text)` | Optional. Names for a `tags` filter with `suggests: true` that match what the person typed: `[{ id, label }]` |
 | `getListings()` | Optional, with the `listings` capability. `[{ id, title, subtitle? }]`: lists people can browse without searching, like "Freshly updated", "Trending" or "Best of all time". The first one shows on the Browse tab |
 | `getListing(id, page)` | Optional, with the `listings` capability. One page of a list from `getListings`, shaped like `search`'s result: `{ results, hasMore }` |
+| `getSeries(id, page)` | Optional (app 0.6 and later). One page of the works in a series, in the series' order, shaped like `search`'s result. `id` is the `id` of an entry in `getWork`'s `series`. With it, a series on a work's page opens in the app; without it, the series links to `url` |
 | `idFromURL(url)` | Optional. The work ID for a link to a work on your site, or `null`. Lets people import a list of links (AO3 bookmarks, a reading list) |
 | `resolveLink(url)` | Optional, with the `links` capability. Reads a chapter page on one of your `domains` that another source handed over, and returns chapter content |
 
@@ -104,8 +105,10 @@ empty when the person searches by filters alone.
 
 `group` puts filters under a heading on the Filters screen. `workField` names the work
 field the filter searches by (`fandoms`, `relationships`, `characters`, `tags`,
-`warnings`, `categories`, `rating` or `language`): tapping one of those tags on a work's
-page then opens a search for it, and holding it offers a search without it.
+`warnings`, `categories`, `rating`, `language` or `authors`): tapping one of those tags
+on a work's page then opens a search for it, and holding it offers a search without it.
+An `authors` filter is what an author's page uses to list their works (app 0.6 and later);
+without one, the app searches for the author's name.
 
 Apps before 0.4 only know `select`, `multi` and `toggle`. Check `host.filterTypes`
 before offering the others:

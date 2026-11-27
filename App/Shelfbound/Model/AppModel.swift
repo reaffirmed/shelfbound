@@ -33,7 +33,7 @@ struct UnhandledLink: Error, LocalizedError {
 @Observable
 final class AppModel {
     static let shared = AppModel()
-    nonisolated static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.12"
+    nonisolated static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.6.0"
 
     private(set) var repos: [SavedRepo] = []
     private(set) var installed: [InstalledSource] = []
@@ -46,6 +46,7 @@ final class AppModel {
     private(set) var downloads = DownloadSnapshot()
     private(set) var isCheckingUpdates = false
     private(set) var lastReport: UpdateReport?
+    private(set) var isCheckingSavedSearches = false
     /// Goes up each time the person passes a site's bot check, so screens showing that
     /// error can try again.
     private(set) var verifiedCount = 0
@@ -597,6 +598,98 @@ final class AppModel {
         library[key]?.settings.autoScrollSpeed ?? settings.autoScrollSpeed
     }
 
+    // MARK: - Saved searches
+
+    var savedSearches: [SavedSearch] { library.allSavedSearches }
+
+    func savedSearch(sourceID: String, query: String, filters: [String: [String]]) -> SavedSearch? {
+        savedSearches.first { $0.matches(sourceID: sourceID, query: query, filters: filters) }
+    }
+
+    /// Keeps a search. `seen` are the results on screen, which aren't new.
+    func saveSearch(sourceID: String, name: String, query: String, filters: [String: [String]], seen: [String]) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        var search = SavedSearch(
+            sourceID: sourceID, name: trimmed.isEmpty ? "Saved search" : trimmed,
+            query: query.trimmingCharacters(in: .whitespaces), filters: filters)
+        search.markSeen(seen)
+        library.savedSearches = library.allSavedSearches + [search]
+        scheduleSave()
+    }
+
+    func removeSavedSearch(_ id: UUID) {
+        library.removeSavedSearch(id)
+        scheduleSave()
+    }
+
+    func renameSavedSearch(_ id: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        library.updateSavedSearch(id) { $0.name = trimmed }
+        scheduleSave()
+    }
+
+    /// The person opened a saved search and these results came back. Returns the ones
+    /// that are new since they last looked, and counts them all as seen from now on.
+    func viewedSavedSearch(_ id: UUID, resultIDs: [String]) -> Set<String> {
+        guard let search = savedSearches.first(where: { $0.id == id }) else { return [] }
+        let fresh = Set(search.newIDs(in: resultIDs))
+        library.updateSavedSearch(id) { $0.markSeen(resultIDs) }
+        scheduleSave()
+        return fresh
+    }
+
+    /// Asks each saved search's source for its first page and counts what's new. Searches
+    /// checked in the last half hour are left alone unless `force` is set.
+    func refreshSavedSearches(force: Bool = false) async {
+        guard !isCheckingSavedSearches else { return }
+        isCheckingSavedSearches = true
+        defer { isCheckingSavedSearches = false }
+        for search in savedSearches {
+            if !force, let checked = search.checkedAt, Date().timeIntervalSince(checked) < 1800 { continue }
+            guard visibleSources.contains(where: { $0.id == search.sourceID }),
+                  let runtime = try? runtime(for: search.sourceID),
+                  let page = try? await runtime.search(query: search.query, page: 1, filters: search.filters) else { continue }
+            library.updateSavedSearch(search.id) { $0.checked(page.results.map(\.id)) }
+        }
+        scheduleSave()
+    }
+
+    // MARK: - Shelves
+
+    var shelves: [CustomShelf] { library.allShelves }
+
+    @discardableResult
+    func createShelf(named name: String, adding keys: [WorkKey] = []) -> UUID? {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        let id = library.addShelf(named: name)
+        if !keys.isEmpty { library.setShelf(id, contains: true, keys) }
+        scheduleSave()
+        return id
+    }
+
+    func renameShelf(_ id: UUID, to name: String) {
+        library.renameShelf(id, to: name)
+        scheduleSave()
+    }
+
+    func deleteShelf(_ id: UUID) {
+        library.removeShelf(id)
+        scheduleSave()
+    }
+
+    func setShelf(_ id: UUID, contains: Bool, _ keys: [WorkKey]) {
+        library.setShelf(id, contains: contains, keys)
+        scheduleSave()
+    }
+
+    // MARK: - Series
+
+    /// Whether the work's source can list a series in the app.
+    func canListSeries(_ sourceID: String) -> Bool {
+        (try? runtime(for: sourceID))?.implements("getSeries") ?? false
+    }
+
     // MARK: - Highlights
 
     func addHighlight(_ highlight: Highlight, to key: WorkKey) {
@@ -924,6 +1017,18 @@ final class AppModel {
             report.works += 1
         }
         if library.lastUpdateCheck == nil { library.lastUpdateCheck = backup.library.lastUpdateCheck }
+        // Saved searches and shelves from the backup join the ones here.
+        let knownSearches = Set(library.allSavedSearches.map(\.id))
+        let addedSearches = backup.library.allSavedSearches.filter { !knownSearches.contains($0.id) }
+        if !addedSearches.isEmpty { library.savedSearches = library.allSavedSearches + addedSearches }
+        for shelf in backup.library.allShelves {
+            if library.allShelves.contains(where: { $0.id == shelf.id }) {
+                let keys = shelf.workIDs.compactMap { id in library.records[id]?.key }
+                library.setShelf(shelf.id, contains: true, keys)
+            } else {
+                library.shelves = library.allShelves + [shelf]
+            }
+        }
         if let restored = backup.settings { settings = restored }
         saveNow()
 
